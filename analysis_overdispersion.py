@@ -58,6 +58,127 @@ circ_mouse = pd.concat([mouse_covars, IS_pre, delta_IS], axis=1).reset_index()
 
 print(f"\nMouse-level rows: {circ_mouse.shape[0]}")
 
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import statsmodels.formula.api as smf
+import numpy as np
+import pandas as pd
+
+# =========================
+# 1) Build Δ metrics for multiple circadian variables
+# =========================
+circ_metrics = ["IS", "IV", "RA", "Amplitude"]
+
+# Keep only metrics present in dataset
+circ_metrics = [m for m in circ_metrics if m in circ.columns]
+
+wide = circ.pivot_table(index="ID", columns="PRE_POST", values=circ_metrics, aggfunc="mean")
+
+# Compute change scores
+delta_dict = {}
+for m in circ_metrics:
+    if (m, "PRE") in wide.columns and (m, "POST") in wide.columns:
+        delta_dict[f"delta_{m}"] = wide[(m, "POST")] - wide[(m, "PRE")]
+
+delta_df = pd.DataFrame(delta_dict)
+delta_df.index.name = "ID"
+delta_df = delta_df.reset_index()
+
+print("\nΔ metrics used for PCA:", delta_df.columns.tolist())
+
+# Merge mouse-level covariates
+pca_df = circ_mouse.merge(delta_df, on="ID", how="inner")
+
+# Drop rows with missing Δ values
+pca_vars = [c for c in pca_df.columns if c.startswith("delta_")]
+pca_df = pca_df.dropna(subset=pca_vars).copy()
+
+print("Rows included in PCA:", pca_df.shape[0])
+
+# =========================
+# 2) Standardise Δ metrics
+# =========================
+scaler = StandardScaler()
+X = scaler.fit_transform(pca_df[pca_vars])
+
+# =========================
+# 3) Run PCA
+# =========================
+pca = PCA()
+pcs = pca.fit_transform(X)
+
+# Add PC1 to dataframe
+pca_df["PC1"] = pcs[:, 0]
+
+print("\nExplained variance ratio:")
+for i, var in enumerate(pca.explained_variance_ratio_):
+    print(f"PC{i+1}: {var:.3f}")
+
+print("\nPCA loadings (PC1):")
+for name, loading in zip(pca_vars, pca.components_[0]):
+    print(f"{name:20s}: {loading:.3f}")
+
+# =========================
+# 4) Test Light → PC1
+# =========================
+pca_df["Light_new"] = pca_df["Light_new_mouse"].astype(str)
+pca_df["Age_new"] = pca_df["Age_new_mouse"].astype(str)
+pca_df["Sex_new"] = pca_df["Sex_new_mouse"].astype(str)
+
+model_pc1 = smf.ols(
+    "PC1 ~ C(Light_new) + C(Age_new) + C(Sex_new)",
+    data=pca_df
+).fit(cov_type="HC3")
+
+print("\n=== Light → Circadian Composite (PC1) ===")
+print(model_pc1.summary())
+
+# =========================
+# 5) PC1 → Barnes
+# =========================
+barnes_pca = barnes.merge(pca_df[["ID", "PC1"]], on="ID", how="inner")
+
+barnes_pca["ID_str"] = barnes_pca["ID"].astype(str)
+barnes_pca["Trial"] = pd.to_numeric(barnes_pca["Trial"], errors="coerce")
+barnes_pca[NOSEPOKE] = pd.to_numeric(barnes_pca[NOSEPOKE], errors="coerce")
+
+barnes_pca = barnes_pca.dropna(subset=["PC1", "Trial", NOSEPOKE]).copy()
+barnes_pca = barnes_pca[barnes_pca[NOSEPOKE] >= 0]
+
+gee_nb_pca = smf.gee(
+    formula=f"{NOSEPOKE} ~ Trial + PC1 + C(Light_new) + C(Age_new) + C(Sex_new)",
+    groups="ID_str",
+    data=barnes_pca,
+    family=sm.families.NegativeBinomial(),
+    cov_struct=sm.cov_struct.Exchangeable()
+).fit()
+
+print("\n=== PC1 → Barnes (NB GEE) ===")
+print(gee_nb_pca.summary())
+
+# =========================
+# 6) PC1 → NOR
+# =========================
+nor_pca = nor.merge(pca_df[["ID", "PC1"]], on="ID", how="inner")
+
+N_dur = pd.to_numeric(nor_pca["N_obj_nose_duration_s"], errors="coerce")
+F_dur = pd.to_numeric(nor_pca["F_obj_nose_duration_s"], errors="coerce")
+
+nor_pca = nor_pca[(N_dur.notna()) & (F_dur.notna())].copy()
+N_dur = N_dur.loc[nor_pca.index]
+F_dur = F_dur.loc[nor_pca.index]
+
+nor_pca["DI"] = (N_dur - F_dur) / (N_dur + F_dur + 1e-9)
+
+model_nor_pc1 = smf.ols(
+    "DI ~ PC1 + C(Light_new) + C(Age_new) + C(Sex_new)",
+    data=nor_pca
+).fit(cov_type="HC3")
+
+print("\n=== PC1 → NOR ===")
+print(model_nor_pc1.summary())
+
+print("\nDONE.")
 
 # ============================================================
 # 1) BARNES: Negative Binomial GEE (overdispersion-robust)
