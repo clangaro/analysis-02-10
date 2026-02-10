@@ -6,208 +6,263 @@ import pandas as pd
 
 import statsmodels.formula.api as smf
 from statsmodels.stats.multitest import multipletests
-
-# For Poisson GLMM (Bayesian MAP estimation)
 from statsmodels.genmod.bayes_mixed_glm import PoissonBayesMixedGLM
 
-
-# =========================
+# -----------------------------
 # 0) Load
-# =========================
+# -----------------------------
 circ = pd.read_csv("Circadian_raw.csv")
 barnes = pd.read_csv("Barnes_clean.csv")
-nor = pd.read_csv("UCBAge_Novel_clean.csv")
+nor = pd.read_csv("UCBAge_Novel_clean.csv").rename(columns={"Animal_ID": "ID"})
 
-# Harmonise ID column name
-nor = nor.rename(columns={"Animal_ID": "ID"})
-
-# Coerce IDs
 for df in (circ, barnes, nor):
     df["ID"] = pd.to_numeric(df["ID"], errors="coerce").astype("Int64")
 
-# Ensure categorical coding, with CTR as reference and ISF as treatment
 def set_cats(df, col, cats):
     if col in df.columns:
         df[col] = df[col].astype("category").cat.set_categories(cats, ordered=True)
     return df
 
-# circadian
+# Confirmed: ISF is 40 Hz light group; CTR is control
 circ = set_cats(circ, "PRE.POST", ["PRE", "POST"])
 circ = set_cats(circ, "Light_new", ["CTR", "ISF"])
 circ["Age_new"] = circ["Age_new"].astype("category")
 circ["Sex_new"] = circ["Sex_new"].astype("category")
 
-# barnes
 barnes = set_cats(barnes, "Light_new", ["CTR", "ISF"])
 barnes["Age_new"] = barnes["Age_new"].astype("category")
 barnes["Sex_new"] = barnes["Sex_new"].astype("category")
 barnes["Trial"] = pd.to_numeric(barnes["Trial"], errors="coerce")
 
-# NOR
 nor = set_cats(nor, "Light_new", ["CTR", "ISF"])
 nor["Age_new"] = nor["Age_new"].astype("category")
 nor["Sex_new"] = nor["Sex_new"].astype("category")
 
+# -----------------------------
+# 1) Circadian: model selection for random slope (PRE.POST | ID)
+# Primary: IS
+# -----------------------------
+def logit_clip(x, eps=1e-6):
+    x = np.asarray(x, dtype=float)
+    x = np.clip(x, eps, 1 - eps)
+    return np.log(x / (1 - x))
 
-# =========================
-# 1) QC: who has PRE and POST
-# =========================
-prepost_counts = circ.groupby("ID")["PRE.POST"].nunique()
-missing_pair = prepost_counts[prepost_counts < 2].index.tolist()
-print(f"\nCircadian mice total: {circ['ID'].nunique()}")
-print(f"Mice missing PRE or POST in circadian: {len(missing_pair)}")
-
-
-# =========================
-# 2) Circadian mixed model
-# Primary: IS (best single summary for “circadian regularity”)
-# Model: IS ~ PRE.POST * Light_new + Age_new + Sex_new + (PRE.POST | ID)
-# =========================
-def fit_circadian(outcome="IS"):
+def fit_circadian_mixedlm(outcome, use_logit_if_bounded=True):
     d = circ[["ID", "PRE.POST", "Light_new", "Age_new", "Sex_new", outcome]].dropna().copy()
 
-    # Scale continuous outcome (optional) improves optimiser stability; does NOT change inference on fixed effects
-    d[f"z_{outcome}"] = (d[outcome] - d[outcome].mean()) / d[outcome].std(ddof=0)
+    y = outcome
+    if use_logit_if_bounded:
+        # IS and RA are typically bounded in [0,1] in these datasets
+        if d[outcome].min() >= 0 and d[outcome].max() <= 1:
+            d[f"{outcome}_logit"] = logit_clip(d[outcome])
+            y = f"{outcome}_logit"
 
-    formula = f"z_{outcome} ~ PRE.POST * Light_new + Age_new + Sex_new"
+    # Fixed effects: main hypothesis is the interaction POST×ISF
+    formula = f"{y} ~ PRE.POST * Light_new + Age_new + Sex_new"
 
-    # random intercept + random slope for PRE.POST
-    md = smf.mixedlm(formula, d, groups=d["ID"], re_formula="~PRE.POST")
-    m = md.fit(method="lbfgs", reml=True)
+    # Random intercept only (ML) for comparison
+    m_ri_ml = smf.mixedlm(formula, d, groups=d["ID"]).fit(method="lbfgs", reml=False)
 
-    print(f"\n=== Circadian MixedLM: {outcome} ===")
-    print(m.summary())
+    # Random intercept + random slope for PRE.POST (ML) for comparison
+    m_rs_ml = smf.mixedlm(formula, d, groups=d["ID"], re_formula="~PRE.POST").fit(method="lbfgs", reml=False)
 
-    return m, d
+    # Compare by AIC (practical) and LR test (approximate; conservative in mixed models)
+    aic_ri, aic_rs = m_ri_ml.aic, m_rs_ml.aic
+    lr_stat = 2 * (m_rs_ml.llf - m_ri_ml.llf)
+    df_lr = (len(m_rs_ml.params) - len(m_ri_ml.params))
+    # Chi-square approximation
+    from scipy.stats import chi2
+    p_lr = 1 - chi2.cdf(lr_stat, df_lr) if df_lr > 0 else np.nan
 
-circ_model_IS, circ_used = fit_circadian("IS")
+    chosen = "RI+RS" if aic_rs < aic_ri else "RI"
+    print(f"\n[Circadian {outcome}] AIC RI={aic_ri:.2f} | RI+RS={aic_rs:.2f} -> choose {chosen} (LR p≈{p_lr:.4g})")
 
-# Optional secondary circadian checks with FDR
-secondary = [x for x in ["IV", "RA", "Amplitude"] if x in circ.columns]
-sec_results = []
+    # Refit final chosen model with REML (recommended for final parameter estimates)
+    if chosen == "RI+RS":
+        m_final = smf.mixedlm(formula, d, groups=d["ID"], re_formula="~PRE.POST").fit(method="lbfgs", reml=True)
+    else:
+        m_final = smf.mixedlm(formula, d, groups=d["ID"]).fit(method="lbfgs", reml=True)
+
+    print(m_final.summary())
+    return m_final, d, y
+
+# Primary circadian model
+circ_IS_model, circ_IS_used, circ_IS_y = fit_circadian_mixedlm("IS")
+
+# Secondary circadian outcomes with FDR on the *interaction* term(s)
+secondary = [m for m in ["IV", "RA", "Amplitude"] if m in circ.columns]
+sec_rows = []
 sec_models = {}
-
 for out in secondary:
-    m, d = fit_circadian(out)
-    sec_models[out] = (m, d)
-    # store the treatment-modulated change: PRE.POST[T.POST]:Light_new[T.ISF]
+    m, d, y = fit_circadian_mixedlm(out)
+    sec_models[out] = m
     for term in m.pvalues.index:
         if "PRE.POST[T.POST]:Light_new" in term:
-            sec_results.append({"outcome": out, "term": term, "p": float(m.pvalues[term])})
+            sec_rows.append({"outcome": out, "term": term, "p": float(m.pvalues[term]), "beta": float(m.params[term])})
 
-if sec_results:
-    sec_df = pd.DataFrame(sec_results)
+if sec_rows:
+    sec_df = pd.DataFrame(sec_rows)
     rej, p_fdr, _, _ = multipletests(sec_df["p"].values, method="fdr_bh", alpha=0.05)
     sec_df["p_fdr_bh"] = p_fdr
     sec_df["sig_fdr_0.05"] = rej
-    print("\n=== Secondary circadian interaction terms (FDR controlled) ===")
+    print("\nSecondary circadian interaction terms (FDR BH):")
     print(sec_df.sort_values(["outcome", "term"]).to_string(index=False))
 
-
-# =========================
-# 3) Compute per-mouse ΔIS = POST − PRE (predictor for behaviour)
-# =========================
+# -----------------------------
+# 2) Compute ΔIS and IS_PRE for behaviour + mediation
+# -----------------------------
 wide_IS = circ.pivot_table(index="ID", columns="PRE.POST", values="IS", aggfunc="mean")
-circ_delta = (wide_IS.get("POST") - wide_IS.get("PRE")).rename("delta_IS").reset_index()
+delta_IS = (wide_IS.get("POST") - wide_IS.get("PRE")).rename("delta_IS")
+IS_pre = wide_IS.get("PRE").rename("IS_pre")
 
-# Add stable mouse-level covariates
 mouse_covars = (
     circ.sort_values(["ID", "PRE.POST"])
         .groupby("ID")[["Light_new", "Age_new", "Sex_new"]]
         .agg(lambda s: s.dropna().iloc[0] if len(s.dropna()) else np.nan)
-        .reset_index()
 )
 
-circ_mouse = mouse_covars.merge(circ_delta, on="ID", how="left")
+circ_mouse = pd.concat([mouse_covars, IS_pre, delta_IS], axis=1).reset_index()
 
-
-# =========================
-# 4) Barnes: nose-poke frequency (count)
-# You asked for “nose poke frequency”.
-# In your file the closest columns are:
-#   - EntryZone_freq_new  (count)
-#   - Goal.Box_feq_new    (count)
-# Choose ONE as primary; here I use EntryZone_freq_new unless you change it.
-# =========================
-BARNES_NOSEPOKE = "EntryZone_freq_new"  # change to "Goal.Box_feq_new" if that is your intended measure
+# -----------------------------
+# 3) Barnes (nose-poke count): Poisson mixed model with overdispersion check
+# Primary nose poke: EntryZone_freq_new
+# -----------------------------
+NOSEPOKE = "EntryZone_freq_new"
 
 barnes_m = barnes.merge(circ_mouse, on="ID", how="left")
-barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "delta_IS", BARNES_NOSEPOKE]).copy()
+barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
+barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce").astype(int)
+barnes_m = barnes_m[barnes_m[NOSEPOKE] >= 0].copy()
 
-# --- 4A) Preferred: Poisson GLMM with random intercept per mouse
-# Fixed: Trial + Light + delta_IS + Age + Sex (+ interaction delta_IS:Light if desired)
-# Random: intercept per ID
-def fit_barnes_poisson_glmm(df):
-    d = df.copy()
-    # Ensure integer non-negative counts
-    d[BARNES_NOSEPOKE] = pd.to_numeric(d[BARNES_NOSEPOKE], errors="coerce").astype(int)
-    d = d[d[BARNES_NOSEPOKE] >= 0].copy()
+# Create an observation ID for OLRE (overdispersion)
+barnes_m["obs_id"] = np.arange(len(barnes_m)).astype(int)
 
-    # Build fixed effects design via formula
-    # Note: PoissonBayesMixedGLM uses a patsy formula with `0 +` in vc formulas.
-    formula = f"{BARNES_NOSEPOKE} ~ Trial + Light_new + delta_IS + Age_new + Sex_new"
+def fit_barnes_poisson(df, use_olre=False):
+    # Fixed effects: learning trend (Trial), treatment, baseline rhythm, change in rhythm, covariates
+    formula = f"{NOSEPOKE} ~ Trial + Light_new + IS_pre + delta_IS + Age_new + Sex_new"
 
-    # Random intercept per mouse via variance components
-    vc = {"ID_re": "0 + C(ID)"}
+    vc = {"mouse_re": "0 + C(ID)"}
+    if use_olre:
+        vc["olre"] = "0 + C(obs_id)"
 
-    model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=d)
-    # fit_map gives a MAP estimate; stable and fast for typical sample sizes
+    model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=df)
     res = model.fit_map()
+    return res
 
-    print(f"\n=== Barnes Poisson GLMM (MAP): {BARNES_NOSEPOKE} ===")
-    print(res.summary())
-    return res, d
+# Fit without OLRE first
+barnes_res = fit_barnes_poisson(barnes_m, use_olre=False)
+print("\n=== Barnes Poisson mixed model (no OLRE) ===")
+print(barnes_res.summary())
 
-# --- 4B) Fallback: Linear MixedLM on log1p(count), with (Trial | ID) random effects
-def fit_barnes_log_mixedlm(df):
-    d = df.copy()
-    d[BARNES_NOSEPOKE] = pd.to_numeric(d[BARNES_NOSEPOKE], errors="coerce")
-    d = d.dropna(subset=[BARNES_NOSEPOKE]).copy()
-    d["log1p_count"] = np.log1p(d[BARNES_NOSEPOKE].astype(float))
+# Overdispersion diagnostic (approximate):
+# Compare observed variance to mean at the raw level as a quick screen
+mean_y = barnes_m[NOSEPOKE].mean()
+var_y = barnes_m[NOSEPOKE].var(ddof=1)
+disp_ratio = var_y / mean_y if mean_y > 0 else np.nan
+print(f"\n[Barnes] crude overdispersion screen: Var/Mean = {disp_ratio:.3f}")
 
-    formula = "log1p_count ~ Trial + Light_new + delta_IS + Age_new + Sex_new"
-    md = smf.mixedlm(formula, d, groups=d["ID"], re_formula="~Trial")
-    m = md.fit(method="lbfgs", reml=True)
+# If Var/Mean substantially > 1, refit with OLRE
+if np.isfinite(disp_ratio) and disp_ratio > 1.5:
+    barnes_res_olre = fit_barnes_poisson(barnes_m, use_olre=True)
+    print("\n=== Barnes Poisson mixed model WITH OLRE (recommended under overdispersion) ===")
+    print(barnes_res_olre.summary())
+else:
+    barnes_res_olre = None
 
-    print(f"\n=== Barnes fallback MixedLM on log1p(count): {BARNES_NOSEPOKE} ===")
-    print(m.summary())
-    return m, d
-
-try:
-    barnes_glmm, barnes_used = fit_barnes_poisson_glmm(barnes_m)
-except Exception as e:
-    print(f"\n[NOTE] Poisson GLMM failed ({e}). Using fallback MixedLM on log1p(count).")
-    barnes_lmm, barnes_used = fit_barnes_log_mixedlm(barnes_m)
-
-
-# =========================
-# 5) NOR: circadian ΔIS predicting object recognition
-# Compute duration-based discrimination index (DI)
-# DI_duration = (Novel - Familiar) / (Novel + Familiar)
-# =========================
+# -----------------------------
+# 4) NOR: Discrimination Index and robust regression
+# -----------------------------
 nor_m = nor.merge(circ_mouse, on="ID", how="left")
-
-needed = ["N_obj_nose_duration_s", "F_obj_nose_duration_s", "delta_IS", "Light_new", "Age_new", "Sex_new"]
-nor_m = nor_m.dropna(subset=[c for c in needed if c in nor_m.columns]).copy()
+nor_m = nor_m.dropna(subset=["N_obj_nose_duration_s", "F_obj_nose_duration_s", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"]).copy()
 
 n = pd.to_numeric(nor_m["N_obj_nose_duration_s"], errors="coerce")
 f = pd.to_numeric(nor_m["F_obj_nose_duration_s"], errors="coerce")
 nor_m["DI_duration"] = (n - f) / (n + f + 1e-9)
 
-# Optional frequency-based DI as a sensitivity analysis
-if "N_obj_nose_frequency" in nor_m.columns and "F_nose_frequency" in nor_m.columns:
-    nf = pd.to_numeric(nor_m["N_obj_nose_frequency"], errors="coerce")
-    ff = pd.to_numeric(nor_m["F_nose_frequency"], errors="coerce")
-    nor_m["DI_frequency"] = (nf - ff) / (nf + ff + 1e-9)
-
-print("\n=== NOR OLS: DI_duration ~ delta_IS + Light + Age + Sex ===")
-nor_fit = smf.ols("DI_duration ~ delta_IS + Light_new + Age_new + Sex_new", data=nor_m).fit()
+# Model includes baseline and change to reduce regression-to-the-mean artefacts
+nor_fit = smf.ols("DI_duration ~ Light_new + IS_pre + delta_IS + Age_new + Sex_new", data=nor_m).fit(cov_type="HC3")
+print("\n=== NOR OLS with robust (HC3) SEs ===")
 print(nor_fit.summary())
 
-if "DI_frequency" in nor_m.columns:
-    print("\n=== NOR OLS (sensitivity): DI_frequency ~ delta_IS + Light + Age + Sex ===")
-    nor_fit2 = smf.ols("DI_frequency ~ delta_IS + Light_new + Age_new + Sex_new", data=nor_m).fit()
-    print(nor_fit2.summary())
+# -----------------------------
+# 5) Mediation (bootstrap): Light -> delta_IS -> Behaviour
+# Use per-mouse endpoints for behaviour.
+# Barnes endpoint: mean nosepokes in final trials (default: max Trial - 1 and max Trial)
+# -----------------------------
+def barnes_endpoint(df):
+    # Define "final performance" as mean of last two trials (publication-friendly and simple)
+    max_trial = df["Trial"].max()
+    last_trials = df[df["Trial"].isin([max_trial - 1, max_trial])].copy()
+    endp = last_trials.groupby("ID")[NOSEPOKE].mean().rename("barnes_endp").reset_index()
+    return endp
+
+barnes_endp = barnes_endpoint(barnes_m)
+med_df = circ_mouse.merge(barnes_endp, on="ID", how="left").merge(
+    nor_m.groupby("ID")["DI_duration"].mean().rename("nor_endp").reset_index(), on="ID", how="left"
+)
+
+# Drop mice missing endpoints (you can run mediation separately per endpoint)
+med_barnes = med_df.dropna(subset=["Light_new", "Age_new", "Sex_new", "delta_IS", "barnes_endp"]).copy()
+med_nor = med_df.dropna(subset=["Light_new", "Age_new", "Sex_new", "delta_IS", "nor_endp"]).copy()
+
+def bootstrap_mediation(df, y_col, n_boot=5000, seed=0):
+    rng = np.random.default_rng(seed)
+    ids = df["ID"].dropna().unique()
+
+    # Path a: delta_IS ~ Light + covars
+    # Path b/c': y ~ Light + delta_IS + covars
+    a_formula = "delta_IS ~ Light_new + Age_new + Sex_new + IS_pre"
+    b_formula = f"{y_col} ~ Light_new + delta_IS + Age_new + Sex_new + IS_pre"
+
+    # Fit on full sample for point estimate
+    a_fit = smf.ols(a_formula, data=df).fit()
+    b_fit = smf.ols(b_formula, data=df).fit()
+    # Extract Light effect in a-model (ISF vs CTR) and delta_IS effect in b-model
+    a_term = [t for t in a_fit.params.index if "Light_new" in t]
+    if len(a_term) != 1:
+        raise RuntimeError("Unexpected Light_new coding; check categories.")
+    a = float(a_fit.params[a_term[0]])
+    b = float(b_fit.params["delta_IS"])
+    indirect = a * b
+
+    # Bootstrap by resampling mice (cluster bootstrap)
+    boots = []
+    for _ in range(n_boot):
+        samp_ids = rng.choice(ids, size=len(ids), replace=True)
+        boot = pd.concat([df[df["ID"] == i] for i in samp_ids], axis=0, ignore_index=True)
+
+        af = smf.ols(a_formula, data=boot).fit()
+        bf = smf.ols(b_formula, data=boot).fit()
+
+        a_term_b = [t for t in af.params.index if "Light_new" in t]
+        if len(a_term_b) != 1 or "delta_IS" not in bf.params.index:
+            continue
+        boots.append(float(af.params[a_term_b[0]]) * float(bf.params["delta_IS"]))
+
+    boots = np.array(boots, dtype=float)
+    ci_lo, ci_hi = np.quantile(boots, [0.025, 0.975]) if len(boots) > 100 else (np.nan, np.nan)
+
+    return {
+        "y": y_col,
+        "indirect_a_times_b": indirect,
+        "boot_n": int(len(boots)),
+        "ci_2.5%": float(ci_lo),
+        "ci_97.5%": float(ci_hi),
+        "a_model_p": float(a_fit.pvalues[a_term[0]]),
+        "b_model_p": float(b_fit.pvalues["delta_IS"]),
+        "cprime_light_p": float(b_fit.pvalues[a_term[0]])
+    }
+
+print("\n=== Mediation: Barnes endpoint ===")
+if len(med_barnes) >= 10:
+    print(bootstrap_mediation(med_barnes, "barnes_endp"))
+else:
+    print("Not enough mice with Barnes endpoint for stable bootstrap mediation.")
+
+print("\n=== Mediation: NOR endpoint ===")
+if len(med_nor) >= 10:
+    print(bootstrap_mediation(med_nor, "nor_endp"))
+else:
+    print("Not enough mice with NOR endpoint for stable bootstrap mediation.")
 
 print("\nDONE.")
-
