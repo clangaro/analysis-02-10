@@ -200,32 +200,56 @@ circ_mouse = circ_mouse.rename(columns={
 # =========================
 # 5) Barnes: nose-poke frequency (count) as Poisson mixed model
 # =========================
-NOSEPOKE = "EntryZone_freq_new"  # change to "Goal_Box_feq_new" if needed
+NOSEPOKE = "EntryZone_freq_new"  # change to "Goal_Box_feq_new" if that is your intended measure
 
 require_columns(barnes, ["ID", "Trial", "Light_new", "Age_new", "Sex_new", NOSEPOKE], "Barnes_clean.csv (cleaned)")
 
+# Merge ONLY the numeric rhythm predictors to avoid column name collisions
 barnes_m = barnes.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
 
-# Now Light_new/Age_new/Sex_new are ONLY from barnes (no suffixing), so dropna works
 barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
 
+# Force dtypes safe for patsy in PoissonBayesMixedGLM:
+# - All categorical predictors to plain strings (object dtype)
+# - ID to string
+barnes_m["ID_str"] = barnes_m["ID"].astype(str)
+barnes_m["Light_new"] = barnes_m["Light_new"].astype(str)
+barnes_m["Age_new"] = barnes_m["Age_new"].astype(str)
+barnes_m["Sex_new"] = barnes_m["Sex_new"].astype(str)
+
+# Numeric predictors
+barnes_m["Trial"] = pd.to_numeric(barnes_m["Trial"], errors="coerce")
+barnes_m["IS_pre"] = pd.to_numeric(barnes_m["IS_pre"], errors="coerce")
+barnes_m["delta_IS"] = pd.to_numeric(barnes_m["delta_IS"], errors="coerce")
+
+# Count outcome
 barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce").astype(int)
-barnes_m = barnes_m[barnes_m[NOSEPOKE] >= 0].copy()
+barnes_m = barnes_m[(barnes_m[NOSEPOKE] >= 0) & barnes_m["Trial"].notna()].copy()
+
+# Observation id for OLRE
 barnes_m["obs_id"] = np.arange(len(barnes_m)).astype(int)
 
 def fit_barnes_poisson(df: pd.DataFrame, use_olre: bool = False):
-    formula = f"{NOSEPOKE} ~ Trial + Light_new + IS_pre + delta_IS + Age_new + Sex_new"
-    vc = {"mouse_re": "0 + C(ID)"}
+    # Make categorical coding explicit with C(...)
+    formula = (
+        f"{NOSEPOKE} ~ Trial + C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)"
+    )
+
+    # Random intercept per mouse via variance components
+    vc = {"mouse_re": "0 + C(ID_str)"}
     if use_olre:
         vc["olre"] = "0 + C(obs_id)"
+
     model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=df)
     res = model.fit_map()
     return res
 
+# Fit without OLRE
 barnes_res = fit_barnes_poisson(barnes_m, use_olre=False)
 print(f"\n=== Barnes Poisson mixed model (no OLRE): {NOSEPOKE} ===")
 print(barnes_res.summary())
 
+# Crude overdispersion screen (Var/Mean)
 mean_y = barnes_m[NOSEPOKE].mean()
 var_y = barnes_m[NOSEPOKE].var(ddof=1)
 disp_ratio = var_y / mean_y if mean_y > 0 else np.nan
