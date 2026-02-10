@@ -189,19 +189,24 @@ mouse_covars = (
 circ_mouse = pd.concat([mouse_covars, IS_pre, delta_IS], axis=1).reset_index()
 print(f"\nMouse-level table rows (circ_mouse): {circ_mouse.shape[0]}")
 
+# IMPORTANT: rename circ_mouse covariates to avoid merge suffix collisions
+circ_mouse = circ_mouse.rename(columns={
+    "Light_new": "Light_new_mouse",
+    "Age_new": "Age_new_mouse",
+    "Sex_new": "Sex_new_mouse"
+})
+
 
 # =========================
 # 5) Barnes: nose-poke frequency (count) as Poisson mixed model
 # =========================
-# Choose your nose-poke column (after cleaning).
-# Common options in your file:
-# - EntryZone_freq_new
-# - Goal_Box_feq_new  (this is the cleaned version of Goal.Box_feq_new)
-NOSEPOKE = "EntryZone_freq_new"  # change to "Goal_Box_feq_new" if that is your intended measure
+NOSEPOKE = "EntryZone_freq_new"  # change to "Goal_Box_feq_new" if needed
 
 require_columns(barnes, ["ID", "Trial", "Light_new", "Age_new", "Sex_new", NOSEPOKE], "Barnes_clean.csv (cleaned)")
 
-barnes_m = barnes.merge(circ_mouse, on="ID", how="left")
+barnes_m = barnes.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
+
+# Now Light_new/Age_new/Sex_new are ONLY from barnes (no suffixing), so dropna works
 barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
 
 barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce").astype(int)
@@ -209,23 +214,18 @@ barnes_m = barnes_m[barnes_m[NOSEPOKE] >= 0].copy()
 barnes_m["obs_id"] = np.arange(len(barnes_m)).astype(int)
 
 def fit_barnes_poisson(df: pd.DataFrame, use_olre: bool = False):
-    # Fixed effects: Trial + Light + baseline IS + delta IS + covariates
     formula = f"{NOSEPOKE} ~ Trial + Light_new + IS_pre + delta_IS + Age_new + Sex_new"
-
     vc = {"mouse_re": "0 + C(ID)"}
     if use_olre:
         vc["olre"] = "0 + C(obs_id)"
-
     model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=df)
     res = model.fit_map()
     return res
 
-# Fit without OLRE
 barnes_res = fit_barnes_poisson(barnes_m, use_olre=False)
 print(f"\n=== Barnes Poisson mixed model (no OLRE): {NOSEPOKE} ===")
 print(barnes_res.summary())
 
-# Crude overdispersion screen (Var/Mean)
 mean_y = barnes_m[NOSEPOKE].mean()
 var_y = barnes_m[NOSEPOKE].var(ddof=1)
 disp_ratio = var_y / mean_y if mean_y > 0 else np.nan
@@ -234,27 +234,31 @@ print(f"\n[Barnes] crude overdispersion screen Var/Mean = {disp_ratio:.3f}")
 barnes_res_olre = None
 if np.isfinite(disp_ratio) and disp_ratio > 1.5:
     barnes_res_olre = fit_barnes_poisson(barnes_m, use_olre=True)
-    print(f"\n=== Barnes Poisson mixed model WITH OLRE (recommended under overdispersion): {NOSEPOKE} ===")
+    print(f"\n=== Barnes Poisson mixed model WITH OLRE: {NOSEPOKE} ===")
     print(barnes_res_olre.summary())
 
 
 # =========================
 # 6) NOR: discrimination index (DI) and robust linear model
 # =========================
-# After cleaning, these typically remain:
-# N_obj_nose_duration_s, F_obj_nose_duration_s
 require_columns(nor, ["ID", "Light_new", "Age_new", "Sex_new"], "UCBAge_Novel_clean.csv (cleaned)")
 require_columns(nor, ["N_obj_nose_duration_s", "F_obj_nose_duration_s"], "UCBAge_Novel_clean.csv (needs durations for DI)")
 
-nor_m = nor.merge(circ_mouse, on="ID", how="left")
-nor_m = nor_m.dropna(subset=["N_obj_nose_duration_s", "F_obj_nose_duration_s", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"]).copy()
+nor_m = nor.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
+nor_m = nor_m.dropna(subset=[
+    "N_obj_nose_duration_s", "F_obj_nose_duration_s",
+    "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"
+]).copy()
 
 n = pd.to_numeric(nor_m["N_obj_nose_duration_s"], errors="coerce")
 f = pd.to_numeric(nor_m["F_obj_nose_duration_s"], errors="coerce")
 nor_m["DI_duration"] = (n - f) / (n + f + 1e-9)
 
-# Robust SEs are used to reduce sensitivity to heteroskedasticity/outliers in small samples
-nor_fit = smf.ols("DI_duration ~ Light_new + IS_pre + delta_IS + Age_new + Sex_new", data=nor_m).fit(cov_type="HC3")
+nor_fit = smf.ols(
+    "DI_duration ~ Light_new + IS_pre + delta_IS + Age_new + Sex_new",
+    data=nor_m
+).fit(cov_type="HC3")
+
 print("\n=== NOR OLS with robust (HC3) SEs ===")
 print(nor_fit.summary())
 
@@ -264,7 +268,6 @@ print(nor_fit.summary())
 # Light -> delta_IS -> Behaviour endpoints
 # =========================
 def barnes_endpoint(df: pd.DataFrame) -> pd.DataFrame:
-    """Define a per-mouse Barnes endpoint: mean nosepokes in the last two trials."""
     max_trial = df["Trial"].max()
     last_trials = df[df["Trial"].isin([max_trial - 1, max_trial])].copy()
     endp = last_trials.groupby("ID")[NOSEPOKE].mean().rename("barnes_endp").reset_index()
@@ -277,29 +280,23 @@ med_df = (
              .merge(nor_m.groupby("ID")["DI_duration"].mean().rename("nor_endp").reset_index(), on="ID", how="left")
 )
 
-med_barnes = med_df.dropna(subset=["Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", "barnes_endp"]).copy()
-med_nor = med_df.dropna(subset=["Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", "nor_endp"]).copy()
+med_barnes = med_df.dropna(subset=["Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS", "barnes_endp"]).copy()
+med_nor = med_df.dropna(subset=["Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS", "nor_endp"]).copy()
 
 def bootstrap_mediation(df: pd.DataFrame, y_col: str, n_boot: int = 5000, seed: int = 0):
-    """
-    Cluster bootstrap by mouse ID.
-    a-model: delta_IS ~ Light + covariates + baseline
-    b-model: y ~ Light + delta_IS + covariates + baseline
-    indirect = a * b
-    """
     rng = np.random.default_rng(seed)
     ids = df["ID"].dropna().unique()
 
-    a_formula = "delta_IS ~ Light_new + Age_new + Sex_new + IS_pre"
-    b_formula = f"{y_col} ~ Light_new + delta_IS + Age_new + Sex_new + IS_pre"
+    # Use mouse-level covariates consistently (from circ_mouse)
+    a_formula = "delta_IS ~ Light_new_mouse + Age_new_mouse + Sex_new_mouse + IS_pre"
+    b_formula = f"{y_col} ~ Light_new_mouse + delta_IS + Age_new_mouse + Sex_new_mouse + IS_pre"
 
     a_fit = smf.ols(a_formula, data=df).fit()
     b_fit = smf.ols(b_formula, data=df).fit()
 
-    # Identify the Light indicator term (ISF vs CTR)
-    light_terms = [t for t in a_fit.params.index if t.startswith("Light_new")]
+    light_terms = [t for t in a_fit.params.index if t.startswith("Light_new_mouse")]
     if len(light_terms) != 1:
-        raise RuntimeError(f"Unexpected Light_new coding in a-model terms: {light_terms}")
+        raise RuntimeError(f"Unexpected Light coding in a-model terms: {light_terms}")
 
     a = float(a_fit.params[light_terms[0]])
     b = float(b_fit.params["delta_IS"])
@@ -313,7 +310,7 @@ def bootstrap_mediation(df: pd.DataFrame, y_col: str, n_boot: int = 5000, seed: 
         af = smf.ols(a_formula, data=boot).fit()
         bf = smf.ols(b_formula, data=boot).fit()
 
-        lt = [t for t in af.params.index if t.startswith("Light_new")]
+        lt = [t for t in af.params.index if t.startswith("Light_new_mouse")]
         if (len(lt) != 1) or ("delta_IS" not in bf.params.index):
             continue
         boots.append(float(af.params[lt[0]]) * float(bf.params["delta_IS"]))
@@ -348,3 +345,4 @@ else:
     print("Not enough mice with NOR endpoint for stable bootstrap mediation.")
 
 print("\nDONE.")
+
