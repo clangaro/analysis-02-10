@@ -90,70 +90,76 @@ circ_mouse = circ_mouse.rename(columns={"Light_new": "Light_new_mouse",
 print(f"\nMouse-level rows: {circ_mouse.shape[0]}")
 
 
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+
+# -------------------------
+# Helpers (keep your existing clean_colnames/require_columns/logit_clip)
+# -------------------------
+def logit_clip(p, eps=1e-6):
+    p = np.asarray(p, dtype=float)
+    p = np.clip(p, eps, 1 - eps)
+    return np.log(p / (1 - p))
+
+
 # ============================================================
-# 1) BARNES: Overdispersion-robust Poisson mixed model with OLRE
+# 1) BARNES: Negative Binomial GEE (overdispersion-robust)
 # ============================================================
-# Choose your nosepoke column
-NOSEPOKE = "EntryZone_freq_new"  # or "Goal_Box_feq_new" if that is the correct one
+NOSEPOKE = "EntryZone_freq_new"  # or "Goal_Box_feq_new"
 
-require_columns(barnes, ["Trial", "Light_new", "Age_new", "Sex_new", NOSEPOKE], "Barnes_clean.csv")
+# barnes_m must already be merged with circ_mouse and cleaned, as in your script
+# Ensure these columns exist in barnes_m:
+#   ID, Trial, Light_new, Age_new, Sex_new, IS_pre, delta_IS, NOSEPOKE
 
-barnes_m = barnes.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
-barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
-
-# Coerce types for Patsy
+# Coerce types
+barnes_m = barnes_m.copy()
 barnes_m["ID_str"] = barnes_m["ID"].astype(str)
 barnes_m["Trial"] = pd.to_numeric(barnes_m["Trial"], errors="coerce")
-barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce").astype(int)
-barnes_m = barnes_m[(barnes_m[NOSEPOKE] >= 0) & barnes_m["Trial"].notna()].copy()
+barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce")
+barnes_m = barnes_m.dropna(subset=["ID_str", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
 
-# Overdispersion quick screen
+# Count must be non-negative integer for NB count modelling
+barnes_m = barnes_m[barnes_m[NOSEPOKE] >= 0].copy()
+barnes_m[NOSEPOKE] = barnes_m[NOSEPOKE].astype(int)
+
+# Quick overdispersion check
 mean_y = barnes_m[NOSEPOKE].mean()
 var_y = barnes_m[NOSEPOKE].var(ddof=1)
-disp_ratio = var_y / mean_y if mean_y > 0 else np.nan
-print(f"\n[Barnes] Var/Mean = {disp_ratio:.3f} (>>1 indicates overdispersion)")
+print(f"\n[Barnes] Var/Mean = {var_y / mean_y:.3f} (>>1 supports NB over Poisson)")
 
-# Observation-level random effect
-barnes_m["obs_id"] = np.arange(len(barnes_m)).astype(int)
+# Negative Binomial GEE with robust SE; Exchangeable within-mouse correlation
+gee_nb = smf.gee(
+    formula=f"{NOSEPOKE} ~ Trial + C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
+    groups="ID_str",
+    data=barnes_m,
+    family=sm.families.NegativeBinomial(),
+    cov_struct=sm.cov_struct.Exchangeable()
+).fit()
 
-def fit_barnes_poisson_olre(df: pd.DataFrame):
-    """
-    Poisson mixed model with:
-      - mouse random intercept (accounts for repeated measures)
-      - OLRE random intercept (accounts for overdispersion)
-    """
-    # C() forces categorical interpretation
-    formula = f"{NOSEPOKE} ~ Trial + C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)"
+print("\n=== Barnes Negative Binomial GEE (clustered by mouse; robust SEs) ===")
+print(gee_nb.summary())
 
-    vc = {
-        "mouse_re": "0 + C(ID_str)",
-        "olre":     "0 + C(obs_id)"
-    }
-
-    model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=df)
-    res = model.fit_map()
-    return res
-
-barnes_res_olre = fit_barnes_poisson_olre(barnes_m)
-print(f"\n=== Barnes Poisson mixed model WITH OLRE (overdispersion-robust): {NOSEPOKE} ===")
-print(barnes_res_olre.summary())
-
-# Optional: exponentiate fixed-effect posterior means to interpret as rate ratios
-# Note: Summary shows posterior means for coefficients on log scale.
-print("\n[Barnes] Approximate rate ratios (exp(coef)) for fixed effects:")
-for name, val in zip(barnes_res_olre.model.exog_names, barnes_res_olre.params[:len(barnes_res_olre.model.exog_names)]):
-    print(f"  {name:35s} RR≈ {np.exp(val):.3f}")
+# Interpretability: convert coefficients to rate ratios (RR = exp(beta))
+print("\n[Barnes] Rate ratios (RR = exp(beta)) and 95% CI:")
+params = gee_nb.params
+conf = gee_nb.conf_int()
+for term in params.index:
+    rr = float(np.exp(params[term]))
+    lo = float(np.exp(conf.loc[term, 0]))
+    hi = float(np.exp(conf.loc[term, 1]))
+    print(f"  {term:35s} RR={rr:.3f}  (95% CI {lo:.3f}–{hi:.3f})")
 
 
-# ==========================================
-# 2) NOR: add behavioural models
-# ==========================================
-# Needed columns for duration-based measures
-require_columns(nor, ["N_obj_nose_duration_s", "F_obj_nose_duration_s"], "UCBAge_Novel_clean.csv")
+# ============================================================
+# 2) NOR: robust regression models
+# ============================================================
+# nor_m must already be merged with circ_mouse and cleaned, as in your script
+# Required: N_obj_nose_duration_s, F_obj_nose_duration_s, plus predictors
 
-nor_m = nor.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
-nor_m = nor_m.dropna(subset=["Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS",
-                             "N_obj_nose_duration_s", "F_obj_nose_duration_s"]).copy()
+nor_m = nor_m.copy()
 
 N_dur = pd.to_numeric(nor_m["N_obj_nose_duration_s"], errors="coerce")
 F_dur = pd.to_numeric(nor_m["F_obj_nose_duration_s"], errors="coerce")
@@ -161,26 +167,28 @@ nor_m = nor_m[(N_dur.notna()) & (F_dur.notna())].copy()
 N_dur = N_dur.loc[nor_m.index]
 F_dur = F_dur.loc[nor_m.index]
 
-# (A) Preference proportion: p = Novel / (Novel + Familiar)
-# This is in [0,1] and often more stable than DI.
+# (A) Preference proportion
 nor_m["p_novel_dur"] = (N_dur / (N_dur + F_dur + 1e-9)).clip(1e-6, 1 - 1e-6)
 nor_m["logit_p_novel_dur"] = logit_clip(nor_m["p_novel_dur"].values)
 
-# (B) Discrimination index: DI = (Novel - Familiar) / (Novel + Familiar)
+# (B) Discrimination index
 nor_m["DI_dur"] = (N_dur - F_dur) / (N_dur + F_dur + 1e-9)
 
-print("\n=== NOR model 1: logit(preference proportion) with robust SEs ===")
+# Robust OLS (HC3) for both outcomes
 nor_fit_pref = smf.ols(
     "logit_p_novel_dur ~ C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
     data=nor_m
 ).fit(cov_type="HC3")
+
+print("\n=== NOR Model 1: logit(preference proportion), robust (HC3) SEs ===")
 print(nor_fit_pref.summary())
 
-print("\n=== NOR model 2: discrimination index (DI) with robust SEs ===")
 nor_fit_di = smf.ols(
     "DI_dur ~ C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
     data=nor_m
 ).fit(cov_type="HC3")
+
+print("\n=== NOR Model 2: discrimination index, robust (HC3) SEs ===")
 print(nor_fit_di.summary())
 
 print("\nDONE.")
