@@ -57,57 +57,52 @@ mouse_covars = (
 circ_mouse = pd.concat([mouse_covars, IS_pre, delta_IS], axis=1).reset_index()
 
 print(f"\nMouse-level rows: {circ_mouse.shape[0]}")
-
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import numpy as np
 import pandas as pd
 
 # =========================
-# 1) Build Δ metrics for multiple circadian variables
+# Build Δ metrics (one copy each) for PCA
 # =========================
 circ_metrics = ["IS", "IV", "RA", "Amplitude"]
-
-# Keep only metrics present in dataset
 circ_metrics = [m for m in circ_metrics if m in circ.columns]
 
 wide = circ.pivot_table(index="ID", columns="PRE_POST", values=circ_metrics, aggfunc="mean")
 
-# Compute change scores
-delta_dict = {}
+delta_df = pd.DataFrame({"ID": wide.index})
 for m in circ_metrics:
     if (m, "PRE") in wide.columns and (m, "POST") in wide.columns:
-        delta_dict[f"delta_{m}"] = wide[(m, "POST")] - wide[(m, "PRE")]
+        delta_df[f"delta_{m}"] = wide[(m, "POST")] - wide[(m, "PRE")]
 
-delta_df = pd.DataFrame(delta_dict)
-delta_df.index.name = "ID"
-delta_df = delta_df.reset_index()
+delta_df = delta_df.reset_index(drop=True)
 
 print("\nΔ metrics used for PCA:", delta_df.columns.tolist())
 
-# Merge mouse-level covariates
-pca_df = circ_mouse.merge(delta_df, on="ID", how="inner")
+# Build covariate frame (use circ_mouse columns that actually exist)
+# If you want covariates from circadian table, use circ_mouse (already built).
+# But do NOT merge in any delta_* columns from circ_mouse (avoid duplicates).
 
-# Drop rows with missing Δ values
+covars = circ_mouse[["ID", "Light_new", "Age_new", "Sex_new"]].copy()
+
+pca_df = covars.merge(delta_df, on="ID", how="inner")
+
+# Keep only complete cases for PCA variables
 pca_vars = [c for c in pca_df.columns if c.startswith("delta_")]
 pca_df = pca_df.dropna(subset=pca_vars).copy()
 
 print("Rows included in PCA:", pca_df.shape[0])
 
 # =========================
-# 2) Standardise Δ metrics
+# Standardise + PCA
 # =========================
 scaler = StandardScaler()
 X = scaler.fit_transform(pca_df[pca_vars])
 
-# =========================
-# 3) Run PCA
-# =========================
 pca = PCA()
 pcs = pca.fit_transform(X)
-
-# Add PC1 to dataframe
 pca_df["PC1"] = pcs[:, 0]
 
 print("\nExplained variance ratio:")
@@ -119,11 +114,11 @@ for name, loading in zip(pca_vars, pca.components_[0]):
     print(f"{name:20s}: {loading:.3f}")
 
 # =========================
-# 4) Test Light → PC1
+# Light → PC1
 # =========================
-pca_df["Light_new"] = pca_df["Light_new_mouse"].astype(str)
-pca_df["Age_new"] = pca_df["Age_new_mouse"].astype(str)
-pca_df["Sex_new"] = pca_df["Sex_new_mouse"].astype(str)
+pca_df["Light_new"] = pca_df["Light_new"].astype(str)
+pca_df["Age_new"] = pca_df["Age_new"].astype(str)
+pca_df["Sex_new"] = pca_df["Sex_new"].astype(str)
 
 model_pc1 = smf.ols(
     "PC1 ~ C(Light_new) + C(Age_new) + C(Sex_new)",
@@ -134,18 +129,20 @@ print("\n=== Light → Circadian Composite (PC1) ===")
 print(model_pc1.summary())
 
 # =========================
-# 5) PC1 → Barnes
+# PC1 → Barnes (NB GEE, robust)
 # =========================
-barnes_pca = barnes.merge(pca_df[["ID", "PC1"]], on="ID", how="inner")
+NOSEPOKE = "EntryZone_freq_new"  # ensure consistent with your Barnes code
 
+barnes_pca = barnes.merge(pca_df[["ID", "PC1"]], on="ID", how="inner").copy()
 barnes_pca["ID_str"] = barnes_pca["ID"].astype(str)
 barnes_pca["Trial"] = pd.to_numeric(barnes_pca["Trial"], errors="coerce")
 barnes_pca[NOSEPOKE] = pd.to_numeric(barnes_pca[NOSEPOKE], errors="coerce")
 
-barnes_pca = barnes_pca.dropna(subset=["PC1", "Trial", NOSEPOKE]).copy()
-barnes_pca = barnes_pca[barnes_pca[NOSEPOKE] >= 0]
+barnes_pca = barnes_pca.dropna(subset=["ID_str", "Trial", NOSEPOKE, "PC1", "Light_new", "Age_new", "Sex_new"]).copy()
+barnes_pca = barnes_pca[barnes_pca[NOSEPOKE] >= 0].copy()
+barnes_pca[NOSEPOKE] = barnes_pca[NOSEPOKE].astype(int)
 
-gee_nb_pca = smf.gee(
+gee_nb_pc1 = smf.gee(
     formula=f"{NOSEPOKE} ~ Trial + PC1 + C(Light_new) + C(Age_new) + C(Sex_new)",
     groups="ID_str",
     data=barnes_pca,
@@ -153,32 +150,32 @@ gee_nb_pca = smf.gee(
     cov_struct=sm.cov_struct.Exchangeable()
 ).fit()
 
-print("\n=== PC1 → Barnes (NB GEE) ===")
-print(gee_nb_pca.summary())
+print("\n=== PC1 → Barnes (Negative Binomial GEE) ===")
+print(gee_nb_pc1.summary())
 
 # =========================
-# 6) PC1 → NOR
+# PC1 → NOR (robust OLS)
 # =========================
-nor_pca = nor.merge(pca_df[["ID", "PC1"]], on="ID", how="inner")
+nor_pca = nor.merge(pca_df[["ID", "PC1"]], on="ID", how="inner").copy()
 
 N_dur = pd.to_numeric(nor_pca["N_obj_nose_duration_s"], errors="coerce")
 F_dur = pd.to_numeric(nor_pca["F_obj_nose_duration_s"], errors="coerce")
-
 nor_pca = nor_pca[(N_dur.notna()) & (F_dur.notna())].copy()
 N_dur = N_dur.loc[nor_pca.index]
 F_dur = F_dur.loc[nor_pca.index]
 
 nor_pca["DI"] = (N_dur - F_dur) / (N_dur + F_dur + 1e-9)
 
-model_nor_pc1 = smf.ols(
+nor_fit_pc1 = smf.ols(
     "DI ~ PC1 + C(Light_new) + C(Age_new) + C(Sex_new)",
     data=nor_pca
 ).fit(cov_type="HC3")
 
-print("\n=== PC1 → NOR ===")
-print(model_nor_pc1.summary())
+print("\n=== PC1 → NOR (robust OLS) ===")
+print(nor_fit_pc1.summary())
 
 print("\nDONE.")
+
 
 # ============================================================
 # 1) BARNES: Negative Binomial GEE (overdispersion-robust)
