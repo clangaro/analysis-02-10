@@ -497,7 +497,6 @@ if "nor_m" in globals() and "DI_duration" in nor_m.columns:
 
 
 # -------------------------
-# 5) Optional: Save figures automatically
+# 5)Save figures automatically
 # -------------------------
-# If you want to save instead of just showing, uncomment below:
-# plt.savefig("figure_name.png", dpi=300)
+plt.savefig("figure_name.png", dpi=300)
