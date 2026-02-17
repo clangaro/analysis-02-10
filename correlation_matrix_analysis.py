@@ -168,28 +168,39 @@ sns.heatmap(
 plt.title("Spearman Correlation Matrix")
 plt.tight_layout()
 plt.show()
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
-# =========================
-# Optional: Pairplot for key variables
-# =========================
-key_vars = [
-    "IS_pre",
-    "delta_IS",
-    "IS",
-    "RA",
-    "Amplitude",
-    "p_correct",
-    "Hole_errors"
-]
+sns.set(style="white", context="talk")
 
-# Only keep variables that exist
-key_vars = [v for v in key_vars if v in full_df.columns]
+# Compute Spearman correlation
+corr = full_df.corr(method="spearman")
 
-if len(key_vars) >= 2:
-    sns.pairplot(
-        full_df[key_vars],
-        diag_kind="kde",
-        plot_kws={"alpha": 0.6}
-    )
-    plt.suptitle("Pairwise Relationships", y=1.02)
-    plt.show()
+# Mask upper triangle for cleaner visualization
+mask = np.triu(np.ones_like(corr, dtype=bool))
+
+plt.figure(figsize=(14, 12))
+
+heatmap = sns.heatmap(
+    corr,
+    mask=mask,
+    annot=True,
+    fmt=".2f",
+    cmap="coolwarm",
+    center=0,
+    square=True,
+    linewidths=0.5,
+    cbar_kws={"shrink": 0.8},
+    annot_kws={"size": 12}
+)
+
+plt.xticks(rotation=45, ha="right", fontsize=12)
+plt.yticks(rotation=0, fontsize=12)
+
+plt.title("Spearman Correlation Matrix", fontsize=18)
+plt.tight_layout()
+
+# Save high-resolution version
+plt.savefig("spearman_correlation_matrix.png", dpi=300)
+plt.show()
