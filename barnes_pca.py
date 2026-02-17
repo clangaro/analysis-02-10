@@ -5,7 +5,7 @@ Goal:
 - Compute a stable POST circadian composite (PC1_post) using all mice with POST circadian data.
 - Test whether PC1_post predicts Barnes performance specifically at the end of training (Trial 6):
     Primary: Hole_errors (count) -> Negative Binomial GLM with robust (HC3) SE
-    Secondary: Goal_Box_latency_new (log latency) -> OLS with robust (HC3) SE
+    Secondary: Goal.Box_feq_new (log latency) -> OLS with robust (HC3) SE
 - Light is excluded (you can add it back later if needed).
 
 Files required (same folder):
@@ -68,7 +68,7 @@ for df in (circ, barnes, nor):
     df["ID"] = pd.to_numeric(df["ID"], errors="coerce").astype("Int64")
 
 require_cols(circ, ["PRE_POST"], "Circadian_raw.csv")
-require_cols(barnes, ["Trial", "Age_new", "Sex_new", "Hole_errors", "Goal_Box_latency_new"], "Barnes_clean.csv")
+require_cols(barnes, ["Trial", "Age_new", "Sex_new", "Hole_errors", "Goal.Box_feq_new"], "Barnes_clean.csv")
 
 # Ensure Trial numeric
 barnes["Trial"] = pd.to_numeric(barnes["Trial"], errors="coerce")
@@ -159,17 +159,17 @@ print(f"  RR = {np.exp(b):.3f} (95% CI {np.exp(ci[0]):.3f}–{np.exp(ci[1]):.3f}
 # SECONDARY: log(Goal_Box_latency_new) ~ PC1_post + Age + Sex
 # Robust OLS (HC3)
 # =========================
-barnes_end["Goal_Box_latency_new"] = pd.to_numeric(barnes_end["Goal_Box_latency_new"], errors="coerce")
-df_lat = barnes_end.dropna(subset=["Goal_Box_latency_new", "PC1_post", "Age_new", "Sex_new"]).copy()
-df_lat = df_lat[df_lat["Goal_Box_latency_new"] > 0].copy()
-df_lat["log_goal_latency"] = np.log(df_lat["Goal_Box_latency_new"].astype(float))
+barnes_end["Goal.Box_feq_new"] = pd.to_numeric(barnes_end["Goal.Box_feq_new"], errors="coerce")
+df_lat = barnes_end.dropna(subset=["Goal.Box_feq_new", "PC1_post", "Age_new", "Sex_new"]).copy()
+df_lat = df_lat[df_lat["Goal.Box_feq_new"] > 0].copy()
+df_lat["log_goal_latency"] = np.log(df_lat["Goal.Box_feq_new"].astype(float))
 
 lat_fit = smf.ols(
     "log_goal_latency ~ PC1_post + C(Age_new) + C(Sex_new)",
     data=df_lat
 ).fit(cov_type="HC3")
 
-print(f"\n=== SECONDARY (Trial {TRIAL_END}): log(Goal_Box_latency_new) ~ PC1_post (robust OLS) ===")
+print(f"\n=== SECONDARY (Trial {TRIAL_END}): log(Goal.Box_feq_new) ~ PC1_post (robust OLS) ===")
 print(lat_fit.summary())
 
 bL = lat_fit.params["PC1_post"]
