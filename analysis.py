@@ -202,69 +202,143 @@ circ_mouse = circ_mouse.rename(columns={
 
 
 # =========================
-# 5) Barnes: nose-poke frequency (count) as Poisson mixed model
+# 5) Barnes (UPDATED): Trial 6 only, correct vs wrong entry proportions
+# Correct = Goal_Box_feq_new
+# Wrong   = Hole_errors
 # =========================
-NOSEPOKE = "EntryZone_freq_new"  # change to "Goal_Box_feq_new" if that is your intended measure
 
-require_columns(barnes, ["ID", "Trial", "Light_new", "Age_new", "Sex_new", NOSEPOKE], "Barnes_clean.csv (cleaned)")
+TRIAL_END = 6
 
-# Merge ONLY the numeric rhythm predictors to avoid column name collisions
+require_columns(
+    barnes,
+    ["ID", "Trial", "Light_new", "Age_new", "Sex_new", "Goal_Box_feq_new", "Hole_errors"],
+    "Barnes_clean.csv (cleaned)"
+)
+
+# Merge circadian predictors
 barnes_m = barnes.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
 
-barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
+# Restrict to Trial 6
+barnes_t6 = barnes_m[barnes_m["Trial"] == TRIAL_END].copy()
 
-# Force dtypes safe for patsy in PoissonBayesMixedGLM:
-# - All categorical predictors to plain strings (object dtype)
-# - ID to string
-barnes_m["ID_str"] = barnes_m["ID"].astype(str)
-barnes_m["Light_new"] = barnes_m["Light_new"].astype(str)
-barnes_m["Age_new"] = barnes_m["Age_new"].astype(str)
-barnes_m["Sex_new"] = barnes_m["Sex_new"].astype(str)
+# Coerce types
+barnes_t6["Light_new"] = barnes_t6["Light_new"].astype(str)
+barnes_t6["Age_new"] = barnes_t6["Age_new"].astype(str)
+barnes_t6["Sex_new"] = barnes_t6["Sex_new"].astype(str)
+barnes_t6["IS_pre"] = pd.to_numeric(barnes_t6["IS_pre"], errors="coerce")
+barnes_t6["delta_IS"] = pd.to_numeric(barnes_t6["delta_IS"], errors="coerce")
 
-# Numeric predictors
-barnes_m["Trial"] = pd.to_numeric(barnes_m["Trial"], errors="coerce")
-barnes_m["IS_pre"] = pd.to_numeric(barnes_m["IS_pre"], errors="coerce")
-barnes_m["delta_IS"] = pd.to_numeric(barnes_m["delta_IS"], errors="coerce")
+barnes_t6["Goal_Box_feq_new"] = pd.to_numeric(barnes_t6["Goal_Box_feq_new"], errors="coerce")
+barnes_t6["Hole_errors"] = pd.to_numeric(barnes_t6["Hole_errors"], errors="coerce")
 
-# Count outcome
-barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce").astype(int)
-barnes_m = barnes_m[(barnes_m[NOSEPOKE] >= 0) & barnes_m["Trial"].notna()].copy()
+barnes_t6 = barnes_t6.dropna(subset=[
+    "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", "Goal_Box_feq_new", "Hole_errors"
+]).copy()
 
-# Observation id for OLRE
-barnes_m["obs_id"] = np.arange(len(barnes_m)).astype(int)
+# Keep non-negative counts
+barnes_t6 = barnes_t6[(barnes_t6["Goal_Box_feq_new"] >= 0) & (barnes_t6["Hole_errors"] >= 0)].copy()
 
-def fit_barnes_poisson(df: pd.DataFrame, use_olre: bool = False):
-    # Make categorical coding explicit with C(...)
-    formula = (
-        f"{NOSEPOKE} ~ Trial + C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)"
-    )
+# Build totals + proportions
+barnes_t6["total_entries"] = barnes_t6["Goal_Box_feq_new"] + barnes_t6["Hole_errors"]
+barnes_t6 = barnes_t6[barnes_t6["total_entries"] > 0].copy()
 
-    # Random intercept per mouse via variance components
-    vc = {"mouse_re": "0 + C(ID_str)"}
-    if use_olre:
-        vc["olre"] = "0 + C(obs_id)"
+barnes_t6["p_correct"] = barnes_t6["Goal_Box_feq_new"] / barnes_t6["total_entries"]
+barnes_t6["p_wrong"] = barnes_t6["Hole_errors"] / barnes_t6["total_entries"]
 
-    model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=df)
-    res = model.fit_map()
-    return res
+print(f"\nBarnes Trial {TRIAL_END}: n mice with total_entries>0 = {barnes_t6['ID'].nunique()}")
 
-# Fit without OLRE
-barnes_res = fit_barnes_poisson(barnes_m, use_olre=False)
-print(f"\n=== Barnes Poisson mixed model (no OLRE): {NOSEPOKE} ===")
-print(barnes_res.summary())
+# ------------------------------------------------------------
+# Primary Barnes endpoint at Trial 6: percent correct (binomial GLM)
+# Use successes/trials formulation via freq_weights.
+# ------------------------------------------------------------
+binom_fit = smf.glm(
+    formula="p_correct ~ C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
+    data=barnes_t6,
+    family=sm.families.Binomial(),
+    freq_weights=barnes_t6["total_entries"]
+).fit(cov_type="HC3")
 
-# Crude overdispersion screen (Var/Mean)
-mean_y = barnes_m[NOSEPOKE].mean()
-var_y = barnes_m[NOSEPOKE].var(ddof=1)
-disp_ratio = var_y / mean_y if mean_y > 0 else np.nan
-print(f"\n[Barnes] crude overdispersion screen Var/Mean = {disp_ratio:.3f}")
+print(f"\n=== Barnes Trial {TRIAL_END} (Primary): Percent correct ~ Light + IS_pre + delta_IS + covariates (Binomial GLM) ===")
+print(binom_fit.summary())
 
-barnes_res_olre = None
-if np.isfinite(disp_ratio) and disp_ratio > 1.5:
-    barnes_res_olre = fit_barnes_poisson(barnes_m, use_olre=True)
-    print(f"\n=== Barnes Poisson mixed model WITH OLRE: {NOSEPOKE} ===")
-    print(barnes_res_olre.summary())
+# Note: coefficients are log-odds; exp(beta) gives odds ratios.
+print("\nOdds ratios (exp(beta)) for key terms:")
+for term in ["C(Light_new)[T.ISF]", "IS_pre", "delta_IS"]:
+    if term in binom_fit.params.index:
+        b = binom_fit.params[term]
+        ci = binom_fit.conf_int().loc[term].values
+        print(f"  {term}: OR={np.exp(b):.3f} (95% CI {np.exp(ci[0]):.3f}–{np.exp(ci[1]):.3f})")
 
+# ------------------------------------------------------------
+# Optional: also report p_wrong descriptively (it is 1 - p_correct)
+# ------------------------------------------------------------
+print(f"\nTrial {TRIAL_END} mean p_correct = {barnes_t6['p_correct'].mean():.3f}, mean p_wrong = {barnes_t6['p_wrong'].mean():.3f}")
+
+
+# =========================
+# Barnes sensitivity endpoints at Trial 6 (FDR within family)
+# - Secondary latency: Goal_Box_latency_new (log transform; robust OLS)
+# - Entry_latency_new (log transform; robust OLS)
+# - DistanceMoved_cm (robust OLS)
+# - EntryZone_freq_new (count; NB GLM)
+# =========================
+
+sens_tests = []
+
+# Secondary latency outcomes (continuous): use robust OLS on log scale
+for lat_col in ["Goal_Box_latency_new", "Entry_latency_new"]:
+    if lat_col in barnes.columns:
+        d = barnes_m[barnes_m["Trial"] == TRIAL_END].copy()
+        d[lat_col] = pd.to_numeric(d[lat_col], errors="coerce")
+        d = d.dropna(subset=[lat_col, "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"]).copy()
+        d = d[d[lat_col] > 0].copy()
+        d["log_lat"] = np.log(d[lat_col].astype(float))
+
+        fit = smf.ols(
+            "log_lat ~ C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
+            data=d
+        ).fit(cov_type="HC3")
+
+        sens_tests.append({"outcome": lat_col, "model": "OLS(log)", "p_light": float(fit.pvalues.get("C(Light_new)[T.ISF]", np.nan))})
+
+# Distance moved (continuous): robust OLS
+if "DistanceMoved_cm" in barnes.columns:
+    d = barnes_m[barnes_m["Trial"] == TRIAL_END].copy()
+    d["DistanceMoved_cm"] = pd.to_numeric(d["DistanceMoved_cm"], errors="coerce")
+    d = d.dropna(subset=["DistanceMoved_cm", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"]).copy()
+
+    fit = smf.ols(
+        "DistanceMoved_cm ~ C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
+        data=d
+    ).fit(cov_type="HC3")
+
+    sens_tests.append({"outcome": "DistanceMoved_cm", "model": "OLS", "p_light": float(fit.pvalues.get("C(Light_new)[T.ISF]", np.nan))})
+
+# EntryZone_freq_new (count): NB GLM
+if "EntryZone_freq_new" in barnes.columns:
+    d = barnes_m[barnes_m["Trial"] == TRIAL_END].copy()
+    d["EntryZone_freq_new"] = pd.to_numeric(d["EntryZone_freq_new"], errors="coerce")
+    d = d.dropna(subset=["EntryZone_freq_new", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"]).copy()
+    d = d[d["EntryZone_freq_new"] >= 0].copy()
+    d["EntryZone_freq_new"] = d["EntryZone_freq_new"].astype(int)
+
+    fit = smf.glm(
+        "EntryZone_freq_new ~ C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)",
+        data=d,
+        family=sm.families.NegativeBinomial()
+    ).fit(cov_type="HC3")
+
+    sens_tests.append({"outcome": "EntryZone_freq_new", "model": "NB GLM", "p_light": float(fit.pvalues.get("C(Light_new)[T.ISF]", np.nan))})
+
+if sens_tests:
+    sens_df = pd.DataFrame(sens_tests).dropna()
+    rej, p_fdr, _, _ = multipletests(sens_df["p_light"].values, method="fdr_bh", alpha=0.05)
+    sens_df["p_fdr_bh"] = p_fdr
+    sens_df["sig_fdr_0.05"] = rej
+    print(f"\n=== Barnes Trial {TRIAL_END} sensitivity outcomes (FDR within family) ===")
+    print(sens_df.sort_values("p_light").to_string(index=False))
+else:
+    print(f"\nNo Barnes sensitivity outcomes available for Trial {TRIAL_END}.")
 
 # =========================
 # 6) NOR: discrimination index (DI) and robust linear model
