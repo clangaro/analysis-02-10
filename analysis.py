@@ -320,8 +320,22 @@ med_barnes = barnes_t6.copy()
 med_barnes["logit_p_correct"] = logit_clip(med_barnes["p_correct"].values)
 
 # Merge mouse-level covars for mediation
-med_barnes = med_barnes.merge(circ_mouse[["ID", "Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS"]],
-                              on="ID", how="left").dropna(subset=["logit_p_correct", "Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS"])
+# Barnes endpoint: logit(p_correct) per mouse at Trial 6
+med_barnes = barnes_t6.copy()
+med_barnes["logit_p_correct"] = logit_clip(med_barnes["p_correct"].values)
+
+# Merge ONLY mouse-level group covariates (avoid duplicating IS_pre/delta_IS)
+med_barnes = med_barnes.merge(
+    circ_mouse[["ID", "Light_new_mouse", "Age_new_mouse", "Sex_new_mouse"]],
+    on="ID",
+    how="left"
+)
+
+# Now drop missing values (IS_pre and delta_IS already exist in med_barnes)
+med_barnes = med_barnes.dropna(subset=[
+    "logit_p_correct", "Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS"
+]).copy()
+
 
 # NOR endpoint per mouse
 nor_endp = nor_m.groupby("ID")["DI_duration"].mean().rename("nor_endp").reset_index()
