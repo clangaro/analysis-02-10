@@ -406,3 +406,98 @@ else:
     print("Not enough mice for stable mediation on NOR.")
 
 print("\nDONE.")
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+sns.set(style="whitegrid", context="talk")
+
+# -------------------------
+# 1) Circadian PRE vs POST by Light group
+# -------------------------
+def plot_circadian_prepost(metric, y_label=None):
+    d = circ[["ID", "PRE_POST", "Light_new", metric]].dropna().copy()
+    d["PRE_POST"] = d["PRE_POST"].astype(str)
+    d["Light_new"] = d["Light_new"].astype(str)
+
+    plt.figure(figsize=(8, 6))
+    sns.pointplot(
+        data=d,
+        x="PRE_POST",
+        y=metric,
+        hue="Light_new",
+        errorbar="se",
+        dodge=True
+    )
+    plt.title(f"{metric}: PRE vs POST by Light Group")
+    plt.xlabel("Timepoint")
+    plt.ylabel(y_label if y_label else metric)
+    plt.tight_layout()
+    plt.show()
+
+for m in ["IS", "IV", "RA", "Amplitude"]:
+    if m in circ.columns:
+        plot_circadian_prepost(m)
+
+
+# -------------------------
+# 2) Barnes Trial 6 percent correct by Light group
+# -------------------------
+# Assumes barnes_t6 exists and contains p_correct
+if "barnes_t6" in globals():
+    plt.figure(figsize=(8, 6))
+    d = barnes_t6.copy()
+    d["Light_new"] = d["Light_new"].astype(str)
+
+    sns.stripplot(data=d, x="Light_new", y="p_correct", jitter=0.2, alpha=0.7)
+    sns.pointplot(data=d, x="Light_new", y="p_correct", errorbar="se", color="black")
+    plt.title("Barnes Trial 6: Percent Correct by Light Group")
+    plt.xlabel("Light Group")
+    plt.ylabel("Percent Correct (Goal / (Goal + Errors))")
+    plt.ylim(0, 1)
+    plt.tight_layout()
+    plt.show()
+
+
+# -------------------------
+# 3) Barnes Trial 6 percent correct vs circadian change (delta_IS)
+# -------------------------
+# Shows whether circadian improvement relates to end-of-training accuracy
+if "barnes_t6" in globals():
+    d = barnes_t6.dropna(subset=["delta_IS", "p_correct"]).copy()
+    d["Light_new"] = d["Light_new"].astype(str)
+
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(data=d, x="delta_IS", y="p_correct", hue="Light_new", alpha=0.75)
+    sns.regplot(data=d, x="delta_IS", y="p_correct", scatter=False)
+    plt.title("Barnes Trial 6: Percent Correct vs ΔIS")
+    plt.xlabel("ΔIS (POST − PRE)")
+    plt.ylabel("Percent Correct")
+    plt.ylim(0, 1)
+    plt.tight_layout()
+    plt.show()
+
+
+# -------------------------
+# 4) NOR DI by Light group
+# -------------------------
+# Assumes nor_m exists and contains DI_duration
+if "nor_m" in globals() and "DI_duration" in nor_m.columns:
+    d = nor_m.dropna(subset=["DI_duration", "Light_new"]).copy()
+    d["Light_new"] = d["Light_new"].astype(str)
+
+    plt.figure(figsize=(8, 6))
+    sns.stripplot(data=d, x="Light_new", y="DI_duration", jitter=0.2, alpha=0.7)
+    sns.pointplot(data=d, x="Light_new", y="DI_duration", errorbar="se", color="black")
+    plt.title("Novel Object Recognition: DI by Light Group")
+    plt.xlabel("Light Group")
+    plt.ylabel("Discrimination Index (DI)")
+    plt.tight_layout()
+    plt.show()
+
+
+# -------------------------
+# 5) Optional: Save figures automatically
+# -------------------------
+# If you want to save instead of just showing, uncomment below:
+# plt.savefig("figure_name.png", dpi=300)

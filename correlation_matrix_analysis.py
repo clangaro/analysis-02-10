@@ -132,7 +132,7 @@ sns.set(style="white", context="talk")
 # =========================
 # Pearson heatmap
 # =========================
-plt.figure(figsize=(10, 8))
+plt.figure(figsize=(16, 14))
 pearson_corr = full_df.corr(method="pearson")
 
 sns.heatmap(
@@ -180,7 +180,7 @@ corr = full_df.corr(method="spearman")
 # Mask upper triangle for cleaner visualization
 mask = np.triu(np.ones_like(corr, dtype=bool))
 
-plt.figure(figsize=(14, 12))
+plt.figure(figsize=(16, 14))
 
 heatmap = sns.heatmap(
     corr,
@@ -192,11 +192,11 @@ heatmap = sns.heatmap(
     square=True,
     linewidths=0.5,
     cbar_kws={"shrink": 0.8},
-    annot_kws={"size": 12}
+    annot_kws={"size": 4}
 )
 
-plt.xticks(rotation=45, ha="right", fontsize=12)
-plt.yticks(rotation=0, fontsize=12)
+plt.xticks(rotation=45, ha="right", fontsize=4)
+plt.yticks(rotation=0, fontsize=4)
 
 plt.title("Spearman Correlation Matrix", fontsize=18)
 plt.tight_layout()
