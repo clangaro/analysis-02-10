@@ -1,18 +1,20 @@
 """
-Publication-level analysis pipeline (fixed for Patsy column-name issues)
+POST circadian rhythms predicting end-of-training Barnes performance (Trial 6)
 
-WHAT THIS SCRIPT DOES (high level):
-1) Circadian: Mixed-effects model for Light (ISF vs CTR) x PRE/POST on IS (primary),
-   with model selection for random slope (PRE/POST | mouse). Secondary rhythm metrics optional with FDR.
-2) Behaviour:
-   - Barnes: nose-poke COUNT across trials with Poisson mixed model (with optional OLRE for overdispersion),
-     using baseline IS (PRE) + delta IS (POST-PRE) as predictors.
-   - NOR: discrimination index (DI) ~ Light + baseline IS + delta IS + covariates, with robust SEs (HC3).
-3) Mediation (bootstrap, cluster by mouse):
-   Light -> delta_IS -> (Barnes endpoint OR NOR endpoint).
+Goal:
+- Compute a stable POST circadian composite (PC1_post) using all mice with POST circadian data.
+- Test whether PC1_post predicts Barnes performance specifically at the end of training (Trial 6):
+    Primary: Hole_errors (count) -> Negative Binomial GLM with robust (HC3) SE
+    Secondary: Goal_Box_latency_new (log latency) -> OLS with robust (HC3) SE
+- Light is excluded (you can add it back later if needed).
 
-IMPORTANT FIX:
-- Any column names with dots (e.g., PRE.POST) are renamed to safe names (PRE_POST) so Patsy will not error.
+Files required (same folder):
+- Circadian_raw.csv
+- Barnes_clean.csv
+- UCBAge_Novel_clean.csv (loaded but not used here; kept for compatibility)
+
+Run:
+python post_circadian_predicts_barnes_trial6.py
 """
 
 import warnings
@@ -21,352 +23,159 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 
+import statsmodels.api as sm
 import statsmodels.formula.api as smf
-from statsmodels.stats.multitest import multipletests
-from statsmodels.genmod.bayes_mixed_glm import PoissonBayesMixedGLM
+
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 # =========================
-# 0) Helpers
+# Helpers
 # =========================
 def clean_colnames(df: pd.DataFrame) -> pd.DataFrame:
-    """Make column names Patsy-safe: replace non-word characters with underscores."""
     df = df.copy()
     df.columns = (
         df.columns.astype(str)
         .str.strip()
-        .str.replace(r"[^\w]+", "_", regex=True)  # anything not [A-Za-z0-9_]
+        .str.replace(r"[^\w]+", "_", regex=True)
         .str.replace(r"_+", "_", regex=True)
         .str.strip("_")
     )
     return df
 
-def require_columns(df: pd.DataFrame, cols: list[str], df_name: str):
+def require_cols(df: pd.DataFrame, cols: list[str], name: str):
     missing = [c for c in cols if c not in df.columns]
     if missing:
         raise ValueError(
-            f"{df_name} is missing required columns: {missing}\n"
-            f"Available columns include: {df.columns.tolist()[:40]}{' ...' if len(df.columns) > 40 else ''}"
+            f"{name} missing columns: {missing}\n"
+            f"Available columns (first 80): {df.columns.tolist()[:80]}"
         )
 
-def set_cats(df: pd.DataFrame, col: str, cats: list[str]) -> pd.DataFrame:
-    if col in df.columns:
-        df[col] = df[col].astype("category").cat.set_categories(cats, ordered=True)
-    return df
-
-def logit_clip(x, eps=1e-6):
-    x = np.asarray(x, dtype=float)
-    x = np.clip(x, eps, 1 - eps)
-    return np.log(x / (1 - x))
-
 
 # =========================
-# 1) Load + clean column names
+# Load + clean
 # =========================
-circ = pd.read_csv("Circadian_raw.csv")
-barnes = pd.read_csv("Barnes_clean.csv")
-nor = pd.read_csv("UCBAge_Novel_clean.csv")
+circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))  # not used, but loaded for consistency
 
-# Harmonise ID name early if needed
 if "Animal_ID" in nor.columns and "ID" not in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
 
-# Clean column names (THIS FIXES PRE.POST -> PRE_POST etc.)
-circ = clean_colnames(circ)
-barnes = clean_colnames(barnes)
-nor = clean_colnames(nor)
-
-# Coerce IDs
 for df in (circ, barnes, nor):
-    require_columns(df, ["ID"], df_name="A dataset")
+    require_cols(df, ["ID"], "Dataset")
     df["ID"] = pd.to_numeric(df["ID"], errors="coerce").astype("Int64")
 
-# Confirm core columns exist after cleaning
-require_columns(circ, ["PRE_POST", "Light_new", "Age_new", "Sex_new"], "Circadian_raw.csv (cleaned)")
-require_columns(barnes, ["Trial", "Light_new", "Age_new", "Sex_new"], "Barnes_clean.csv (cleaned)")
-require_columns(nor, ["Light_new", "Age_new", "Sex_new"], "UCBAge_Novel_clean.csv (cleaned)")
+require_cols(circ, ["PRE_POST"], "Circadian_raw.csv")
+require_cols(barnes, ["Trial", "Age_new", "Sex_new", "Hole_errors", "Goal_Box_latency_new"], "Barnes_clean.csv")
 
-# Set categorical ordering (CTR reference, ISF treatment)
-circ = set_cats(circ, "PRE_POST", ["PRE", "POST"])
-circ = set_cats(circ, "Light_new", ["CTR", "ISF"])
-circ["Age_new"] = circ["Age_new"].astype("category")
-circ["Sex_new"] = circ["Sex_new"].astype("category")
-
-barnes = set_cats(barnes, "Light_new", ["CTR", "ISF"])
-barnes["Age_new"] = barnes["Age_new"].astype("category")
-barnes["Sex_new"] = barnes["Sex_new"].astype("category")
+# Ensure Trial numeric
 barnes["Trial"] = pd.to_numeric(barnes["Trial"], errors="coerce")
 
-nor = set_cats(nor, "Light_new", ["CTR", "ISF"])
-nor["Age_new"] = nor["Age_new"].astype("category")
-nor["Sex_new"] = nor["Sex_new"].astype("category")
+
+# =========================
+# Build POST circadian table (one row per mouse)
+# =========================
+circ_post = circ[circ["PRE_POST"] == "POST"].copy()
+
+# Aggregate to 1 row per mouse at POST (mean for numeric metrics)
+numeric_cols = [c for c in circ_post.columns if circ_post[c].dtype.kind in "if"]
+agg = {c: "mean" for c in numeric_cols}
+circ_post = circ_post.groupby("ID", as_index=False).agg(agg)
+
+print(f"\nPOST circadian mice (after aggregation): {circ_post['ID'].nunique()}")
+
+# Circadian metrics for PCA
+circ_metrics = [m for m in ["IS", "IV", "RA", "Amplitude"] if m in circ_post.columns]
+if len(circ_metrics) < 2:
+    raise ValueError(f"Not enough circadian metrics found for PCA. Found: {circ_metrics}")
+
+# PCA dataset
+pca_df = circ_post[["ID"] + circ_metrics].dropna().copy()
+print(f"Rows included in POST circadian PCA: {pca_df.shape[0]}")
+
+# Standardise + PCA
+scaler = StandardScaler()
+X = scaler.fit_transform(pca_df[circ_metrics])
+
+pca = PCA()
+pcs = pca.fit_transform(X)
+pca_df["PC1_post"] = pcs[:, 0]
+
+print("\nExplained variance ratio (POST circadian PCA):")
+for i, var in enumerate(pca.explained_variance_ratio_):
+    print(f"PC{i+1}: {var:.3f}")
+
+print("\nPC1 loadings (POST circadian PCA):")
+for name, loading in zip(circ_metrics, pca.components_[0]):
+    print(f"{name:12s}: {loading:.3f}")
 
 
 # =========================
-# 2) QC: PRE/POST completeness
+# Barnes end-of-training dataset: Trial 6 only
 # =========================
-prepost_counts = circ.groupby("ID")["PRE_POST"].nunique()
-missing_pair = prepost_counts[prepost_counts < 2].index.tolist()
-print(f"\nCircadian mice total: {circ['ID'].nunique()}")
-print(f"Mice missing PRE or POST in circadian: {len(missing_pair)}")
+TRIAL_END = 6
 
+barnes_end = barnes.merge(pca_df[["ID", "PC1_post"]], on="ID", how="inner").copy()
+barnes_end = barnes_end[barnes_end["Trial"] == TRIAL_END].copy()
 
-# =========================
-# 3) Circadian mixed model with random-effects selection
-# Primary: IS
-# =========================
-def fit_circadian_mixedlm(outcome: str, use_logit_if_bounded: bool = True):
-    require_columns(circ, ["ID", "PRE_POST", "Light_new", "Age_new", "Sex_new", outcome], f"Circadian for outcome={outcome}")
+print(f"\nBarnes mice with Trial {TRIAL_END} and PC1_post: {barnes_end['ID'].nunique()}")
+print(f"Barnes Trial {TRIAL_END} rows: {barnes_end.shape[0]}")
 
-    d = circ[["ID", "PRE_POST", "Light_new", "Age_new", "Sex_new", outcome]].dropna().copy()
-
-    # Optional transformation if bounded in [0,1]
-    y = outcome
-    if use_logit_if_bounded:
-        y_min, y_max = d[outcome].min(), d[outcome].max()
-        if np.isfinite(y_min) and np.isfinite(y_max) and (y_min >= 0) and (y_max <= 1):
-            d[f"{outcome}_logit"] = logit_clip(d[outcome])
-            y = f"{outcome}_logit"
-
-    formula = f"{y} ~ PRE_POST * Light_new + Age_new + Sex_new"
-
-    # Fit both models under ML for comparison
-    m_ri_ml = smf.mixedlm(formula, d, groups=d["ID"]).fit(method="lbfgs", reml=False)
-    m_rs_ml = smf.mixedlm(formula, d, groups=d["ID"], re_formula="~PRE_POST").fit(method="lbfgs", reml=False)
-
-    aic_ri, aic_rs = m_ri_ml.aic, m_rs_ml.aic
-    chosen = "RI+RS" if aic_rs < aic_ri else "RI"
-
-    # Refit chosen with REML for final reporting
-    if chosen == "RI+RS":
-        m_final = smf.mixedlm(formula, d, groups=d["ID"], re_formula="~PRE_POST").fit(method="lbfgs", reml=True)
-    else:
-        m_final = smf.mixedlm(formula, d, groups=d["ID"]).fit(method="lbfgs", reml=True)
-
-    print(f"\n=== Circadian MixedLM: {outcome} (chosen random effects: {chosen}) ===")
-    print(m_final.summary())
-
-    return m_final, d, y, chosen
-
-# Primary
-require_columns(circ, ["IS"], "Circadian_raw.csv (needs IS for primary analysis)")
-circ_IS_model, circ_IS_used, circ_IS_y, circ_IS_re = fit_circadian_mixedlm("IS")
-
-# Secondary (optional) with FDR on the interaction term(s)
-secondary_metrics = [m for m in ["IV", "RA", "Amplitude"] if m in circ.columns]
-sec_rows = []
-sec_models = {}
-
-for out in secondary_metrics:
-    m, d, y, chosen = fit_circadian_mixedlm(out)
-    sec_models[out] = m
-    for term in m.pvalues.index:
-        if "PRE_POST[T.POST]:Light_new" in term:
-            sec_rows.append({"outcome": out, "term": term, "beta": float(m.params[term]), "p": float(m.pvalues[term])})
-
-if sec_rows:
-    sec_df = pd.DataFrame(sec_rows)
-    rej, p_fdr, _, _ = multipletests(sec_df["p"].values, method="fdr_bh", alpha=0.05)
-    sec_df["p_fdr_bh"] = p_fdr
-    sec_df["sig_fdr_0.05"] = rej
-    print("\n=== Secondary circadian interaction terms (FDR BH) ===")
-    print(sec_df.sort_values(["outcome", "term"]).to_string(index=False))
+barnes_end["Age_new"] = barnes_end["Age_new"].astype(str)
+barnes_end["Sex_new"] = barnes_end["Sex_new"].astype(str)
 
 
 # =========================
-# 4) Build mouse-level baseline IS (PRE) and delta IS (POST-PRE)
+# PRIMARY: Hole_errors ~ PC1_post + Age + Sex
+# Negative Binomial GLM with robust (HC3) SE
 # =========================
-wide_IS = circ.pivot_table(index="ID", columns="PRE_POST", values="IS", aggfunc="mean")
-IS_pre = wide_IS.get("PRE").rename("IS_pre")
-delta_IS = (wide_IS.get("POST") - wide_IS.get("PRE")).rename("delta_IS")
+barnes_end["Hole_errors"] = pd.to_numeric(barnes_end["Hole_errors"], errors="coerce")
+df_primary = barnes_end.dropna(subset=["Hole_errors", "PC1_post", "Age_new", "Sex_new"]).copy()
+df_primary = df_primary[df_primary["Hole_errors"] >= 0].copy()
+df_primary["Hole_errors"] = df_primary["Hole_errors"].astype(int)
 
-mouse_covars = (
-    circ.sort_values(["ID", "PRE_POST"])
-        .groupby("ID")[["Light_new", "Age_new", "Sex_new"]]
-        .agg(lambda s: s.dropna().iloc[0] if len(s.dropna()) else np.nan)
-)
+mean_y = df_primary["Hole_errors"].mean()
+var_y = df_primary["Hole_errors"].var(ddof=1)
+print(f"\n[Barnes Trial {TRIAL_END}] Hole_errors Var/Mean = {var_y/mean_y:.3f}")
 
-circ_mouse = pd.concat([mouse_covars, IS_pre, delta_IS], axis=1).reset_index()
-print(f"\nMouse-level table rows (circ_mouse): {circ_mouse.shape[0]}")
-
-# IMPORTANT: rename circ_mouse covariates to avoid merge suffix collisions
-circ_mouse = circ_mouse.rename(columns={
-    "Light_new": "Light_new_mouse",
-    "Age_new": "Age_new_mouse",
-    "Sex_new": "Sex_new_mouse"
-})
-
-
-# =========================
-# 5) Barnes: nose-poke frequency (count) as Poisson mixed model
-# =========================
-NOSEPOKE = "EntryZone_freq_new"  # change to "Goal_Box_feq_new" if that is your intended measure
-
-require_columns(barnes, ["ID", "Trial", "Light_new", "Age_new", "Sex_new", NOSEPOKE], "Barnes_clean.csv (cleaned)")
-
-# Merge ONLY the numeric rhythm predictors to avoid column name collisions
-barnes_m = barnes.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
-
-barnes_m = barnes_m.dropna(subset=["ID", "Trial", "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS", NOSEPOKE]).copy()
-
-# Force dtypes safe for patsy in PoissonBayesMixedGLM:
-# - All categorical predictors to plain strings (object dtype)
-# - ID to string
-barnes_m["ID_str"] = barnes_m["ID"].astype(str)
-barnes_m["Light_new"] = barnes_m["Light_new"].astype(str)
-barnes_m["Age_new"] = barnes_m["Age_new"].astype(str)
-barnes_m["Sex_new"] = barnes_m["Sex_new"].astype(str)
-
-# Numeric predictors
-barnes_m["Trial"] = pd.to_numeric(barnes_m["Trial"], errors="coerce")
-barnes_m["IS_pre"] = pd.to_numeric(barnes_m["IS_pre"], errors="coerce")
-barnes_m["delta_IS"] = pd.to_numeric(barnes_m["delta_IS"], errors="coerce")
-
-# Count outcome
-barnes_m[NOSEPOKE] = pd.to_numeric(barnes_m[NOSEPOKE], errors="coerce").astype(int)
-barnes_m = barnes_m[(barnes_m[NOSEPOKE] >= 0) & barnes_m["Trial"].notna()].copy()
-
-# Observation id for OLRE
-barnes_m["obs_id"] = np.arange(len(barnes_m)).astype(int)
-
-def fit_barnes_poisson(df: pd.DataFrame, use_olre: bool = False):
-    # Make categorical coding explicit with C(...)
-    formula = (
-        f"{NOSEPOKE} ~ Trial + C(Light_new) + IS_pre + delta_IS + C(Age_new) + C(Sex_new)"
-    )
-
-    # Random intercept per mouse via variance components
-    vc = {"mouse_re": "0 + C(ID_str)"}
-    if use_olre:
-        vc["olre"] = "0 + C(obs_id)"
-
-    model = PoissonBayesMixedGLM.from_formula(formula, vc_formulas=vc, data=df)
-    res = model.fit_map()
-    return res
-
-# Fit without OLRE
-barnes_res = fit_barnes_poisson(barnes_m, use_olre=False)
-print(f"\n=== Barnes Poisson mixed model (no OLRE): {NOSEPOKE} ===")
-print(barnes_res.summary())
-
-# Crude overdispersion screen (Var/Mean)
-mean_y = barnes_m[NOSEPOKE].mean()
-var_y = barnes_m[NOSEPOKE].var(ddof=1)
-disp_ratio = var_y / mean_y if mean_y > 0 else np.nan
-print(f"\n[Barnes] crude overdispersion screen Var/Mean = {disp_ratio:.3f}")
-
-barnes_res_olre = None
-if np.isfinite(disp_ratio) and disp_ratio > 1.5:
-    barnes_res_olre = fit_barnes_poisson(barnes_m, use_olre=True)
-    print(f"\n=== Barnes Poisson mixed model WITH OLRE: {NOSEPOKE} ===")
-    print(barnes_res_olre.summary())
-
-
-# =========================
-# 6) NOR: discrimination index (DI) and robust linear model
-# =========================
-require_columns(nor, ["ID", "Light_new", "Age_new", "Sex_new"], "UCBAge_Novel_clean.csv (cleaned)")
-require_columns(nor, ["N_obj_nose_duration_s", "F_obj_nose_duration_s"], "UCBAge_Novel_clean.csv (needs durations for DI)")
-
-nor_m = nor.merge(circ_mouse[["ID", "IS_pre", "delta_IS"]], on="ID", how="left")
-nor_m = nor_m.dropna(subset=[
-    "N_obj_nose_duration_s", "F_obj_nose_duration_s",
-    "Light_new", "Age_new", "Sex_new", "IS_pre", "delta_IS"
-]).copy()
-
-n = pd.to_numeric(nor_m["N_obj_nose_duration_s"], errors="coerce")
-f = pd.to_numeric(nor_m["F_obj_nose_duration_s"], errors="coerce")
-nor_m["DI_duration"] = (n - f) / (n + f + 1e-9)
-
-nor_fit = smf.ols(
-    "DI_duration ~ Light_new + IS_pre + delta_IS + Age_new + Sex_new",
-    data=nor_m
+nb_glm = smf.glm(
+    formula="Hole_errors ~ PC1_post + C(Age_new) + C(Sex_new)",
+    data=df_primary,
+    family=sm.families.NegativeBinomial()
 ).fit(cov_type="HC3")
 
-print("\n=== NOR OLS with robust (HC3) SEs ===")
-print(nor_fit.summary())
+print(f"\n=== PRIMARY (Trial {TRIAL_END}): Hole_errors ~ PC1_post (NB GLM; robust SE) ===")
+print(nb_glm.summary())
+
+b = nb_glm.params["PC1_post"]
+ci = nb_glm.conf_int().loc["PC1_post"].values
+print("\n[PRIMARY] PC1_post rate ratio RR = exp(beta):")
+print(f"  RR = {np.exp(b):.3f} (95% CI {np.exp(ci[0]):.3f}–{np.exp(ci[1]):.3f})")
 
 
 # =========================
-# 7) Mediation (bootstrap, cluster by mouse)
-# Light -> delta_IS -> Behaviour endpoints
+# SECONDARY: log(Goal_Box_latency_new) ~ PC1_post + Age + Sex
+# Robust OLS (HC3)
 # =========================
-def barnes_endpoint(df: pd.DataFrame) -> pd.DataFrame:
-    max_trial = df["Trial"].max()
-    last_trials = df[df["Trial"].isin([max_trial - 1, max_trial])].copy()
-    endp = last_trials.groupby("ID")[NOSEPOKE].mean().rename("barnes_endp").reset_index()
-    return endp
+barnes_end["Goal_Box_latency_new"] = pd.to_numeric(barnes_end["Goal_Box_latency_new"], errors="coerce")
+df_lat = barnes_end.dropna(subset=["Goal_Box_latency_new", "PC1_post", "Age_new", "Sex_new"]).copy()
+df_lat = df_lat[df_lat["Goal_Box_latency_new"] > 0].copy()
+df_lat["log_goal_latency"] = np.log(df_lat["Goal_Box_latency_new"].astype(float))
 
-barnes_endp = barnes_endpoint(barnes_m)
+lat_fit = smf.ols(
+    "log_goal_latency ~ PC1_post + C(Age_new) + C(Sex_new)",
+    data=df_lat
+).fit(cov_type="HC3")
 
-med_df = (
-    circ_mouse.merge(barnes_endp, on="ID", how="left")
-             .merge(nor_m.groupby("ID")["DI_duration"].mean().rename("nor_endp").reset_index(), on="ID", how="left")
-)
+print(f"\n=== SECONDARY (Trial {TRIAL_END}): log(Goal_Box_latency_new) ~ PC1_post (robust OLS) ===")
+print(lat_fit.summary())
 
-med_barnes = med_df.dropna(subset=["Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS", "barnes_endp"]).copy()
-med_nor = med_df.dropna(subset=["Light_new_mouse", "Age_new_mouse", "Sex_new_mouse", "IS_pre", "delta_IS", "nor_endp"]).copy()
-
-def bootstrap_mediation(df: pd.DataFrame, y_col: str, n_boot: int = 5000, seed: int = 0):
-    rng = np.random.default_rng(seed)
-    ids = df["ID"].dropna().unique()
-
-    # Use mouse-level covariates consistently (from circ_mouse)
-    a_formula = "delta_IS ~ Light_new_mouse + Age_new_mouse + Sex_new_mouse + IS_pre"
-    b_formula = f"{y_col} ~ Light_new_mouse + delta_IS + Age_new_mouse + Sex_new_mouse + IS_pre"
-
-    a_fit = smf.ols(a_formula, data=df).fit()
-    b_fit = smf.ols(b_formula, data=df).fit()
-
-    light_terms = [t for t in a_fit.params.index if t.startswith("Light_new_mouse")]
-    if len(light_terms) != 1:
-        raise RuntimeError(f"Unexpected Light coding in a-model terms: {light_terms}")
-
-    a = float(a_fit.params[light_terms[0]])
-    b = float(b_fit.params["delta_IS"])
-    indirect = a * b
-
-    boots = []
-    for _ in range(n_boot):
-        samp_ids = rng.choice(ids, size=len(ids), replace=True)
-        boot = pd.concat([df[df["ID"] == i] for i in samp_ids], axis=0, ignore_index=True)
-
-        af = smf.ols(a_formula, data=boot).fit()
-        bf = smf.ols(b_formula, data=boot).fit()
-
-        lt = [t for t in af.params.index if t.startswith("Light_new_mouse")]
-        if (len(lt) != 1) or ("delta_IS" not in bf.params.index):
-            continue
-        boots.append(float(af.params[lt[0]]) * float(bf.params["delta_IS"]))
-
-    boots = np.array(boots, dtype=float)
-    if len(boots) < 200:
-        ci_lo, ci_hi = (np.nan, np.nan)
-    else:
-        ci_lo, ci_hi = np.quantile(boots, [0.025, 0.975])
-
-    return {
-        "endpoint": y_col,
-        "indirect_a_times_b": indirect,
-        "boot_n": int(len(boots)),
-        "ci_2_5pct": float(ci_lo),
-        "ci_97_5pct": float(ci_hi),
-        "a_model_p_light": float(a_fit.pvalues[light_terms[0]]),
-        "b_model_p_deltaIS": float(b_fit.pvalues["delta_IS"]),
-        "cprime_p_light": float(b_fit.pvalues[light_terms[0]]),
-    }
-
-print("\n=== Mediation: Barnes endpoint ===")
-if len(med_barnes) >= 10:
-    print(bootstrap_mediation(med_barnes, "barnes_endp"))
-else:
-    print("Not enough mice with Barnes endpoint for stable bootstrap mediation.")
-
-print("\n=== Mediation: NOR endpoint ===")
-if len(med_nor) >= 10:
-    print(bootstrap_mediation(med_nor, "nor_endp"))
-else:
-    print("Not enough mice with NOR endpoint for stable bootstrap mediation.")
+bL = lat_fit.params["PC1_post"]
+ciL = lat_fit.conf_int().loc["PC1_post"].values
+print("\n[SECONDARY] Multiplicative effect on latency exp(beta):")
+print(f"  exp(beta) = {np.exp(bL):.3f} (95% CI {np.exp(ciL[0]):.3f}–{np.exp(ciL[1]):.3f})")
+print("  exp(beta) < 1 implies shorter latency (better); > 1 implies longer latency (worse).")
 
 print("\nDONE.")
-
