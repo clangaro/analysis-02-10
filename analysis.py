@@ -406,6 +406,8 @@ else:
     print("Not enough mice for stable mediation on NOR.")
 
 print("\nDONE.")
+
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -413,90 +415,112 @@ import numpy as np
 sns.set(style="whitegrid", context="talk")
 
 # -------------------------
-# 1) Circadian PRE vs POST by Light group
+# Settings
 # -------------------------
-def plot_circadian_prepost(metric, y_label=None):
+OUTDIR = "."  # current folder (same as script / VS Code workspace)
+DPI = 300
+SHOW_PLOTS = True  # set False if you only want files saved
+
+def save_show(fig, filename):
+    path = os.path.join(OUTDIR, filename)
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
+    if SHOW_PLOTS:
+        plt.show()
+    plt.close(fig)
+    print(f"Saved: {path}")
+
+# -------------------------
+# 1) Circadian PRE vs POST by Light group (IS, IV, RA, Amplitude)
+# -------------------------
+def plot_circadian_prepost(metric):
+    if metric not in circ.columns:
+        return
     d = circ[["ID", "PRE_POST", "Light_new", metric]].dropna().copy()
     d["PRE_POST"] = d["PRE_POST"].astype(str)
     d["Light_new"] = d["Light_new"].astype(str)
 
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
+
     sns.pointplot(
         data=d,
         x="PRE_POST",
         y=metric,
         hue="Light_new",
         errorbar="se",
-        dodge=True
+        dodge=True,
+        ax=ax
     )
-    plt.title(f"{metric}: PRE vs POST by Light Group")
-    plt.xlabel("Timepoint")
-    plt.ylabel(y_label if y_label else metric)
-    plt.tight_layout()
-    plt.show()
+
+    ax.set_title(f"{metric}: PRE vs POST by Light Group")
+    ax.set_xlabel("Timepoint")
+    ax.set_ylabel(metric)
+    ax.legend(title="Light Group", loc="best")
+
+    save_show(fig, f"circadian_{metric}_prepost_by_light.png")
 
 for m in ["IS", "IV", "RA", "Amplitude"]:
-    if m in circ.columns:
-        plot_circadian_prepost(m)
-
+    plot_circadian_prepost(m)
 
 # -------------------------
 # 2) Barnes Trial 6 percent correct by Light group
 # -------------------------
-# Assumes barnes_t6 exists and contains p_correct
-if "barnes_t6" in globals():
-    plt.figure(figsize=(8, 6))
+if "barnes_t6" in globals() and "p_correct" in barnes_t6.columns:
     d = barnes_t6.copy()
     d["Light_new"] = d["Light_new"].astype(str)
 
-    sns.stripplot(data=d, x="Light_new", y="p_correct", jitter=0.2, alpha=0.7)
-    sns.pointplot(data=d, x="Light_new", y="p_correct", errorbar="se", color="black")
-    plt.title("Barnes Trial 6: Percent Correct by Light Group")
-    plt.xlabel("Light Group")
-    plt.ylabel("Percent Correct (Goal / (Goal + Errors))")
-    plt.ylim(0, 1)
-    plt.tight_layout()
-    plt.show()
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
 
+    sns.stripplot(data=d, x="Light_new", y="p_correct", jitter=0.2, alpha=0.7, ax=ax)
+    sns.pointplot(data=d, x="Light_new", y="p_correct", errorbar="se", color="black", ax=ax)
+
+    ax.set_title("Barnes Trial 6: Percent Correct by Light Group")
+    ax.set_xlabel("Light Group")
+    ax.set_ylabel("Percent Correct (Goal / (Goal + Errors))")
+    ax.set_ylim(0, 1)
+
+    save_show(fig, "barnes_trial6_percent_correct_by_light.png")
 
 # -------------------------
-# 3) Barnes Trial 6 percent correct vs circadian change (delta_IS)
+# 3) Barnes Trial 6 percent correct vs delta_IS (scatter + overall trend)
 # -------------------------
-# Shows whether circadian improvement relates to end-of-training accuracy
-if "barnes_t6" in globals():
+if "barnes_t6" in globals() and all(c in barnes_t6.columns for c in ["delta_IS", "p_correct", "Light_new"]):
     d = barnes_t6.dropna(subset=["delta_IS", "p_correct"]).copy()
     d["Light_new"] = d["Light_new"].astype(str)
 
-    plt.figure(figsize=(8, 6))
-    sns.scatterplot(data=d, x="delta_IS", y="p_correct", hue="Light_new", alpha=0.75)
-    sns.regplot(data=d, x="delta_IS", y="p_correct", scatter=False)
-    plt.title("Barnes Trial 6: Percent Correct vs ΔIS")
-    plt.xlabel("ΔIS (POST − PRE)")
-    plt.ylabel("Percent Correct")
-    plt.ylim(0, 1)
-    plt.tight_layout()
-    plt.show()
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
 
+    sns.scatterplot(data=d, x="delta_IS", y="p_correct", hue="Light_new", alpha=0.75, ax=ax)
+    sns.regplot(data=d, x="delta_IS", y="p_correct", scatter=False, ax=ax)
+
+    ax.set_title("Barnes Trial 6: Percent Correct vs ΔIS")
+    ax.set_xlabel("ΔIS (POST − PRE)")
+    ax.set_ylabel("Percent Correct")
+    ax.set_ylim(0, 1)
+    ax.legend(title="Light Group", loc="best")
+
+    save_show(fig, "barnes_trial6_percent_correct_vs_deltaIS.png")
 
 # -------------------------
 # 4) NOR DI by Light group
 # -------------------------
-# Assumes nor_m exists and contains DI_duration
-if "nor_m" in globals() and "DI_duration" in nor_m.columns:
+if "nor_m" in globals() and "DI_duration" in nor_m.columns and "Light_new" in nor_m.columns:
     d = nor_m.dropna(subset=["DI_duration", "Light_new"]).copy()
     d["Light_new"] = d["Light_new"].astype(str)
 
-    plt.figure(figsize=(8, 6))
-    sns.stripplot(data=d, x="Light_new", y="DI_duration", jitter=0.2, alpha=0.7)
-    sns.pointplot(data=d, x="Light_new", y="DI_duration", errorbar="se", color="black")
-    plt.title("Novel Object Recognition: DI by Light Group")
-    plt.xlabel("Light Group")
-    plt.ylabel("Discrimination Index (DI)")
-    plt.tight_layout()
-    plt.show()
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
 
+    sns.stripplot(data=d, x="Light_new", y="DI_duration", jitter=0.2, alpha=0.7, ax=ax)
+    sns.pointplot(data=d, x="Light_new", y="DI_duration", errorbar="se", color="black", ax=ax)
 
-# -------------------------
-# 5)Save figures automatically
-# -------------------------
-plt.savefig("figure_name.png", dpi=300)
+    ax.set_title("Novel Object Recognition: DI by Light Group")
+    ax.set_xlabel("Light Group")
+    ax.set_ylabel("Discrimination Index (DI)")
+
+    save_show(fig, "nor_DI_by_light.png")
+
+print("\nAll plots saved.")
+
