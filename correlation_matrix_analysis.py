@@ -202,5 +202,15 @@ plt.title("Spearman Correlation Matrix", fontsize=18)
 plt.tight_layout()
 
 # Save high-resolution version
-plt.savefig("spearman_correlation_matrix.png", dpi=300)
+folder_name = 'figures'
+file_name = 'spearman_correlation_matrix.png'
+full_path = os.path.join(folder_name, file_name)
+
+# Ensure the directory exists
+if not os.path.isdir(folder_name):
+    os.makedirs(folder_name)
+
+# Save high-resolution version
+plt.savefig(full_path, dpi=300)
+
 plt.show()
