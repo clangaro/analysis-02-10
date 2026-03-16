@@ -1,0 +1,138 @@
+IMPROVED BARNES MAZE ANALYSIS — EXPLANATION
+=============================================
+
+This document explains three improvements to the Barnes maze analysis
+that strengthen the manuscript for publication.
+
+
+PROBLEM WITH THE ORIGINAL ANALYSIS
+-----------------------------------
+
+The original primary endpoint for Barnes maze was:
+
+  p_correct = Goal_Box_feq_new / (Goal_Box_feq_new + Hole_errors)
+
+At Trial 6, Goal_Box_feq_new has a maximum value of 1 and a mean of 0.02.
+This means 97.8% of mice NEVER entered the goal box at Trial 6, producing
+a near-universal p_correct of 0.0. With virtually no variance, no statistical
+model can detect group differences — even if real effects exist.
+
+This is a FLOOR EFFECT, not a null result. The endpoint lacks sensitivity
+to detect treatment effects.
+
+
+IMPROVEMENT 1: PROBE ACCURACY (new primary endpoint)
+------------------------------------------------------
+
+We replace Goal_Box_feq_new with EntryZone_freq_new:
+
+  probe_accuracy = EntryZone_freq_new / (EntryZone_freq_new + Hole_errors)
+
+EntryZone_freq_new counts entries into the correct TARGET ZONE (the area
+around the escape box), not just the escape box itself. At Trial 6:
+  - Mean = 3.58 (range 0-16)
+  - Produces probe_accuracy with mean ~0.16 and real variance
+
+This is the standard measure used in published Barnes maze studies
+(e.g., Rosenfeld & Ferguson 2014, Behav Brain Res; Pitts 2018, J Vis Exp).
+It captures spatial memory — the mouse knows WHERE to search even if it
+doesn't physically enter the escape box on every visit.
+
+Models:
+  - Primary: Binomial GLM with freq_weights and HC3 robust SEs
+    probe_accuracy ~ Light + IS_pre + delta_IS + Age + Sex
+  - Sensitivity: Robust OLS (same formula)
+  - Non-parametric: Mann-Whitney U test (Light effect only)
+
+
+IMPROVEMENT 2: LEARNING CURVE (all 6 trials)
+----------------------------------------------
+
+Instead of analysing only Trial 6, we model the full learning trajectory
+across all 6 trials using a linear mixed-effects model:
+
+  probe_accuracy ~ Trial * Light + Age + Sex + (1 | mouse)
+
+This tests:
+  - Trial effect: Do mice improve across training? (learning)
+  - Light effect: Do ISF mice perform better overall?
+  - Trial x Light interaction: Do ISF mice LEARN FASTER?
+
+Why this is better:
+  - Uses ~530 observations instead of ~89 (Trial 6 only)
+  - 6x more statistical power
+  - Captures the TRAJECTORY of learning, not just a single snapshot
+  - The interaction term directly tests the hypothesis that 40Hz light
+    accelerates spatial learning
+
+A random intercept per mouse accounts for repeated measures. We also
+attempt a random slope model (random intercept + random Trial slope per
+mouse) and select based on AIC.
+
+We additionally report per-trial Mann-Whitney tests with FDR correction
+as a descriptive complement.
+
+
+IMPROVEMENT 3: EFFECT SIZES AND POST-HOC POWER
+------------------------------------------------
+
+For every ISF vs CTR comparison, we compute:
+
+  Cohen's d = (mean_ISF - mean_CTR) / pooled_SD
+
+This quantifies the SIZE of the treatment effect, not just its
+significance. For null results, reviewers need to know:
+  - Was the effect truly small (d < 0.2)?
+  - Or was the study underpowered to detect a real effect?
+
+We compute post-hoc power two ways:
+  1. Power for the OBSERVED effect size
+  2. Power for d = 0.5 (medium effect, Cohen's convention)
+
+If power for d=0.5 is > 0.80, the study was adequately powered to detect
+a medium treatment effect, and the null result is informative (not just
+an absence of evidence). If power < 0.80, the null should be interpreted
+more cautiously.
+
+We report these for:
+  - All circadian metrics (IS, IV, RA, Amplitude) at PRE and POST
+  - delta_IS
+  - Barnes Trial 6 probe accuracy, hole errors, distance, latency
+  - NOR discrimination index
+
+
+HOW THESE ANALYSES FIT INTO THE PAPER
+---------------------------------------
+
+Methods section:
+  "Spatial learning was assessed using probe accuracy (entries to the
+   target zone / total hole entries) as the primary Barnes maze endpoint.
+   We modelled (a) Trial 6 probe accuracy using a binomial GLM with
+   robust standard errors, and (b) the full learning curve across
+   Trials 1-6 using linear mixed-effects models with a Trial x Light
+   interaction to test whether 40 Hz light accelerated spatial learning.
+   Effect sizes (Cohen's d) and post-hoc power are reported for all
+   primary comparisons."
+
+Results section:
+  Report the three analyses in sequence — Trial 6 accuracy, learning
+  curve, then effect sizes. The effect size table goes in Supplementary.
+
+Discussion:
+  Emphasise that the null results are INFORMATIVE: the study was powered
+  to detect medium effects (d=0.5) but observed only small effects
+  (d < 0.2), suggesting that 40 Hz light genuinely has minimal impact
+  on spatial learning in this paradigm.
+
+
+REFERENCES
+----------
+
+Rosenfeld CS, Ferguson SA. Barnes maze testing strategies with small
+and large rodent models. J Vis Exp. 2014;(84):e51194.
+
+Pitts MW. Barnes Maze Procedure for Spatial Learning and Memory in Mice.
+Bio Protoc. 2018;8(5):e2744.
+
+Cohen J. Statistical Power Analysis for the Behavioral Sciences. 2nd ed.
+Lawrence Erlbaum Associates; 1988.

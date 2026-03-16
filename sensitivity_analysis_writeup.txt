@@ -1,0 +1,141 @@
+SENSITIVITY ANALYSIS: SENSOR QUALITY AND CIRCADIAN METRIC ROBUSTNESS
+=====================================================================
+For inclusion in Methods and/or Supplementary Materials
+
+
+METHODS SECTION TEXT
+--------------------
+
+Sensitivity analysis: sensor quality
+
+To assess whether inter-sensor variability in the passive infrared (PIR)
+monitors influenced circadian metrics, we performed a three-part
+sensitivity analysis.
+
+First, we recomputed all circadian metrics (IS, IV, RA, amplitude, MESOR,
+phase) from the raw 1-minute PIR time-series using 60-minute epoch bins to
+match ClockLab defaults. Non-parametric metrics (IS, IV, RA) were computed
+following Van Someren et al. (1999): interdaily stability (IS) and
+intradaily variability (IV) were calculated on the full flattened
+time-series, and relative amplitude (RA) was derived from M10 and L5
+values computed on the mean 24-hour activity profile using circular
+rolling windows. Cosinor parameters (MESOR, amplitude, acrophase) were
+obtained by fitting y = MESOR + a*cos(wt) + b*sin(wt) (w = 2pi/24 h)
+via ordinary least squares, with phase referenced to midnight for
+cross-condition comparability. Per-mouse PRE/POST windows were defined
+using each cohort's documented light-treatment start date.
+
+Second, we applied within-mouse z-score normalisation to the raw activity
+counts prior to metric computation. Because IS and IV are computed as
+ratios of variance components, they are algebraically scale-invariant:
+multiplying all activity counts by a constant (as would occur with
+differing sensor gains) cancels in both the numerator and denominator.
+Consistent with this, z-score normalisation produced negligible changes
+in IS (raw PRE mean = 0.402, normalised = 0.403), IV (raw = 1.079,
+normalised = 1.072), and delta_IS (raw mean = -0.097, normalised =
+-0.088).
+
+Third, we identified mice with potential sensor artefacts by flagging
+recordings with consecutive zero-activity runs exceeding 6 hours or
+overall zero-activity exceeding 80% of epochs. This identified 51 of
+84 mice with raw data files as having at least one flagged recording
+period. We then re-ran all primary statistical models excluding flagged
+mice (clean n = 50 for circadian, n = 48-51 for behavioural outcomes)
+and compared results to the full-sample analysis.
+
+
+RESULTS SECTION TEXT
+--------------------
+
+Sensitivity analysis: sensor exclusion
+
+Excluding 51 sensor-flagged mice did not alter any primary conclusions
+(Table S_). All circadian PRE-POST x Light interaction terms remained
+non-significant: IS (full sample: beta = 0.002, p = 0.958; clean sample:
+beta = 0.039, p = 0.345), IV (full: beta = 0.079, p = 0.196; clean:
+beta = 0.062, p = 0.465), RA (full: beta = -0.017, p = 0.612; clean:
+beta = -0.016, p = 0.730), and amplitude (full: beta = 0.168, p = 0.463;
+clean: beta = 0.226, p = 0.398). Effect directions were consistent across
+samples for all metrics.
+
+For behavioural outcomes, the light treatment effect on Barnes maze Trial 6
+accuracy remained non-significant (full: Fisher's exact p = 1.000; clean:
+p = 0.479). Note that Barnes maze accuracy was at floor in both samples,
+with 49 of 50 clean-sample mice scoring zero correct entries at Trial 6,
+precluding parametric modelling (binomial GLM exhibited perfect
+separation). NOR discrimination index showed no light effect in either
+sample (full: beta = -0.052, p = 0.394; clean: beta = -0.044, p = 0.613).
+
+Bootstrap mediation analyses (Light -> delta_IS -> behaviour) yielded
+indirect effects with 95% confidence intervals spanning zero in both
+samples: Barnes (full: -0.028, CI [-0.141, 0.061]; clean: -0.104,
+CI [-0.549, 0.023]) and NOR (full: 0.002, CI [-0.011, 0.020]; clean:
+0.000, CI [-0.041, 0.048]).
+
+The scale-invariance of IS and IV to sensor gain differences, combined
+with the consistency of results across full and sensor-screened samples,
+indicates that inter-sensor variability did not drive the null findings
+for circadian or behavioural outcomes.
+
+
+SUPPLEMENTARY TABLE
+-------------------
+
+Table S_. Comparison of primary model results between full sample and
+sensor-screened (clean) sample.
+
+Model                          | Term              | Full n | Full beta | Full p  | Clean n | Clean beta | Clean p | Direction consistent
+-------------------------------|-------------------|--------|-----------|---------|---------|------------|---------|--------------------
+Circadian LME: IS              | PRE_POST x Light  |     94 |     0.002 |   0.958 |      50 |      0.039 |   0.345 | Yes
+Circadian LME: IV              | PRE_POST x Light  |     94 |     0.079 |   0.196 |      50 |      0.062 |   0.465 | Yes
+Circadian LME: RA              | PRE_POST x Light  |     94 |    -0.017 |   0.612 |      50 |     -0.016 |   0.730 | Yes
+Circadian LME: Amplitude       | PRE_POST x Light  |     94 |     0.168 |   0.463 |      50 |      0.226 |   0.398 | Yes
+Barnes T6 accuracy             | Light (ISF)       |     86 |       --- | 1.000*  |      48 |        --- | 0.479*  | Yes
+NOR discrimination index       | Light (ISF)       |     76 |    -0.052 |   0.394 |      48 |     -0.044 |   0.613 | Yes
+Mediation: Light->dIS->Barnes  | Indirect (a x b)  |     86 |    -0.028 |  CI: [-0.141, 0.061]  |  48  |  -0.104  |  CI: [-0.549, 0.023]  | Yes
+Mediation: Light->dIS->NOR     | Indirect (a x b)  |     76 |     0.002 |  CI: [-0.011, 0.020]  |  48  |   0.000  |  CI: [-0.041, 0.048]  | Yes
+
+* Fisher's exact test (binomial GLM not estimable due to floor effects).
+LME = linear mixed-effects model. CI = 95% bootstrap confidence interval
+(3000 resamples). Sensor-flagged mice were identified by consecutive
+zero-activity runs > 6 hours or > 80% zero-activity epochs in the raw
+1-minute PIR recordings.
+
+
+NOTES FOR DISCUSSION
+--------------------
+
+1. The high proportion of sensor-flagged mice (51/84 = 61%) warrants
+   acknowledgement as a limitation. However, because the primary circadian
+   metrics (IS, IV) are ratio-based and therefore inherently insensitive to
+   sensor gain, the impact on conclusions is minimal.
+
+2. The Barnes maze floor effect (near-zero accuracy at Trial 6 in both
+   groups) is a separate methodological concern unrelated to sensor quality.
+   This suggests that Trial 6 may not provide sufficient sensitivity to
+   detect treatment effects, and future studies might benefit from extended
+   training or alternative endpoints (e.g., latency, learning curve slope
+   across trials).
+
+3. The z-score normalisation result provides a formal demonstration that
+   IS and IV are scale-invariant, which can be stated as a mathematical
+   property rather than an empirical finding: for any constant c > 0,
+   IS(cx) = IS(x) and IV(cx) = IV(x), since c^2 cancels in the
+   numerator and denominator of both formulas.
+
+4. RA is not fully scale-invariant (it depends on the ratio M10/L5 of
+   absolute activity levels in the most/least active windows), but RA
+   showed no treatment effect in either sample, so this distinction does
+   not affect conclusions.
+
+
+REFERENCES TO CITE
+------------------
+
+Van Someren EJW, Swaab DF, Colenda CC, Cohen W, McCall WV, Rosenquist PB.
+Bright light therapy: improved sensitivity to its effects on rest-activity
+rhythms in Alzheimer patients by application of nonparametric methods.
+Chronobiology International. 1999;16(4):505-518.
+
+Winnebeck EC, Fischer D, Leise T, Roenneberg T. Dynamics and ultradian
+structure of human sleep in real life. Current Biology. 2018;28(1):49-59.
