@@ -1,0 +1,100 @@
+METHODS — FOR POSTER
+====================
+
+
+STUDY DESIGN
+
+94 mice (3 age groups: Young, Middle-aged, Old; both sexes) were
+single-housed with passive infrared (PIR) activity monitors. Following
+a baseline recording period (PRE), mice were assigned to 40 Hz gamma
+light stimulation (ISF, n=44) or standard lighting (CTR, n=49) for an
+additional recording period (POST). Circadian activity was monitored
+continuously throughout both periods. Spatial learning was assessed
+using the Barnes maze (6 training trials), and recognition memory was
+assessed using Novel Object Recognition (NOR).
+
+
+CIRCADIAN METRICS
+
+Circadian rhythm metrics were computed from PIR activity data in
+60-minute bins using ClockLab. Non-parametric metrics included
+interdaily stability (IS), intradaily variability (IV), and relative
+amplitude (RA) following Van Someren et al. (1999). Cosinor analysis
+(24 h fixed period) provided MESOR, amplitude, and acrophase.
+
+
+STATISTICAL ANALYSIS — CIRCADIAN
+
+PRE-to-POST changes in circadian metrics were analysed using linear
+mixed-effects models (LME) with a random intercept per mouse:
+
+    Metric ~ PRE_POST x Light + Age + Sex + (1 | Mouse)
+
+The PRE_POST x Light interaction tested whether ISF altered circadian
+rhythms differently from CTR. IS was the primary outcome; IV, RA, and
+amplitude were secondary outcomes with Benjamini-Hochberg FDR correction.
+
+
+STATISTICAL ANALYSIS — BARNES MAZE
+
+The primary endpoint was probe accuracy at Trial 6, defined as:
+
+    probe_accuracy = target_zone_entries / total_hole_entries
+
+This measure was selected a priori based on face validity (direct
+measure of spatial memory), sensitivity to age-related cognitive decline
+(Spearman r = -0.38 with age, p < 0.001), and convergent validity
+(loading = 0.46 on the spatial accuracy dimension identified by PCA).
+Goal-box entry frequency was not used due to a floor effect (97.8% of
+mice scored zero at Trial 6).
+
+Probe accuracy was modelled using a binomial GLM with robust (HC3)
+standard errors:
+
+    probe_accuracy ~ Light + IS_pre + delta_IS + Age + Sex
+
+Learning across trials was assessed using LME with a Trial x Light
+interaction to test whether ISF accelerated spatial learning:
+
+    probe_accuracy ~ Trial x Light + Age + Sex + (1 | Mouse)
+
+
+STATISTICAL ANALYSIS — NOR
+
+The discrimination index (DI) based on nose-point duration was modelled
+using robust OLS:
+
+    DI = (Novel - Familiar) / (Novel + Familiar)
+    DI ~ Light + IS_pre + delta_IS + Age + Sex
+
+
+MEDIATION
+
+Bootstrap mediation (3000 resamples, clustered by mouse) tested whether
+circadian change mediated the treatment-behaviour relationship:
+
+    Light -> delta_IS -> Behaviour
+
+
+SENSITIVITY ANALYSES
+
+Three sensitivity analyses were conducted:
+(1) Circadian metrics were recomputed from raw PIR time-series after
+    within-mouse z-score normalisation to address inter-sensor gain
+    differences. IS and IV are algebraically scale-invariant (ratio-based),
+    confirmed empirically (raw-normalised r = 0.99 for IS).
+(2) Mice with potential sensor artefacts (zero-activity runs > 6 hours
+    or > 80% zero epochs) were excluded and all models re-run.
+(3) Age x Light and Sex x Light interaction terms were added to LME
+    models to control for baseline group imbalances.
+
+No conclusions changed under any sensitivity analysis.
+
+Effect sizes (Cohen's d) and post-hoc power were computed for all
+ISF vs CTR comparisons.
+
+
+REFERENCES
+
+Van Someren EJW et al. Chronobiol Int. 1999;16(4):505-518.
+Cohen J. Statistical Power Analysis for the Behavioral Sciences. 1988.

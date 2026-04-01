@@ -1,9 +1,6 @@
 """
 Variability Analysis: Did 40Hz light reduce between-animal variability?
 
-Your PI observed that POST-treatment LME models showed less residual
-variability than PRE models. This script formally tests whether:
-
 1. Overall variance decreased from PRE to POST (within each Light group)
 2. ISF reduced variance MORE than CTR (treatment-specific variance reduction)
 3. The distribution of circadian metrics became more homogeneous after treatment
@@ -313,9 +310,6 @@ print("SUMMARY")
 print("=" * 70)
 
 print("""
-Your PI's observation that POST models have less variability is testable.
-The key question is: did ISF specifically reduce variability, or did ALL
-mice become less variable over time (e.g., due to habituation)?
 
 Results above show:
 - Whether variance changed from PRE to POST (Analyses 1-4)
