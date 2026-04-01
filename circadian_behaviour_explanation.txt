@@ -1,0 +1,163 @@
+CIRCADIAN METRICS AS PREDICTORS OF BEHAVIOUR — RESULTS EXPLANATION
+===================================================================
+
+
+OVERVIEW
+--------
+
+This analysis tested whether circadian rhythm metrics (IS, IV, RA,
+Amplitude) predict cognitive performance on the Barnes maze and Novel
+Object Recognition (NOR) task. Four approaches were used, each
+increasing in complexity. All models controlled for Age and Sex using
+robust (HC3) standard errors, with Benjamini-Hochberg FDR correction
+applied within each analysis family.
+
+Behavioural outcomes tested:
+  - Barnes Trial 6 probe accuracy (spatial memory)
+  - Barnes learning slope, Trials 1-5 (learning rate)
+  - NOR discrimination index, DI (recognition memory)
+
+
+ANALYSIS 1: SINGLE CIRCADIAN PREDICTOR → BEHAVIOUR
+----------------------------------------------------
+
+Each circadian metric was tested individually as a predictor of each
+behavioural outcome, in three versions: PRE (baseline), POST (after
+treatment), and delta (POST - PRE change).
+
+This produced 12 predictor x 3 outcome = 36 tests.
+
+Result: No single circadian metric significantly predicted any
+behavioural outcome after FDR correction. The lowest uncorrected
+p-values were:
+
+  delta_RA → learning slope:       beta = -0.074, p = 0.106
+  Amplitude_post → Barnes accuracy: beta = -0.010, p = 0.170
+  Amplitude_post → NOR DI:          beta = -0.033, p = 0.195
+
+The delta_RA result suggests a weak trend: mice whose relative
+amplitude decreased from PRE to POST tended to have flatter learning
+curves. However, this did not survive correction for multiple
+comparisons and the effect size was very small (R² increase of 2.4%
+over the Age + Sex base model).
+
+Interpretation: Individual circadian metrics measured at any single
+timepoint do not robustly predict cognitive performance. The
+between-mouse variance in behaviour is driven primarily by Age,
+not by circadian rhythm characteristics.
+
+
+ANALYSIS 2: INTERACTIONS BETWEEN CIRCADIAN METRIC PAIRS
+---------------------------------------------------------
+
+This analysis tested whether the combination of two circadian metrics
+predicted behaviour better than either metric alone. For example:
+does high IS combined with high RA predict better performance than
+high IS or high RA independently?
+
+The interaction was modelled as:
+  behaviour ~ metric1 * metric2 + Age + Sex
+
+The interaction term captures synergistic or compensatory effects —
+cases where the relationship between one circadian metric and
+behaviour depends on the level of another metric.
+
+All pairwise combinations of IS, IV, RA, and Amplitude were tested
+at PRE, POST, and delta timepoints.
+
+Result: No interaction between any pair of circadian metrics
+significantly predicted any behavioural outcome after FDR correction.
+The best uncorrected results were:
+
+  delta_IS x delta_RA → Barnes accuracy:  p = 0.199, ΔR² = +0.010
+  RA_post x Amplitude_post → learning slope: p = 0.239, ΔR² = +0.023
+  delta_IS x delta_RA → NOR DI:           p = 0.203, ΔR² = +0.017
+
+Adding interaction terms improved R² by no more than 1-2% — negligible
+in practical terms.
+
+Interpretation: Circadian metrics do not interact to predict cognition.
+There is no evidence that specific combinations of circadian features
+(e.g., high stability + high amplitude) confer cognitive advantages.
+
+
+ANALYSIS 3: WHICH TIMEPOINT IS MOST PREDICTIVE?
+-------------------------------------------------
+
+For each circadian metric, the PRE, POST, and delta versions were
+compared as predictors of the same behavioural outcome.
+
+Results by metric:
+
+  IS: delta_IS was the best version for Barnes accuracy (p = 0.172),
+      but all three versions were non-significant for all outcomes.
+
+  IV: No version approached significance for any outcome.
+      The best was delta_IV → learning slope (p = 0.328).
+
+  RA: delta_RA was the best version for learning slope (p = 0.106),
+      the closest any single test came to significance. Mice whose RA
+      decreased more showed flatter learning curves. However, this
+      could reflect a general decline rather than a causal relationship.
+
+  Amplitude: POST amplitude was marginally better than PRE for both
+      Barnes (p = 0.170) and NOR (p = 0.195). Higher amplitude after
+      treatment was weakly associated with worse performance, which
+      is counterintuitive and likely reflects confounding with age
+      (younger mice have higher accuracy but also different amplitude).
+
+Interpretation: No timepoint (PRE, POST, or delta) consistently
+outperforms the others. The absence of a signal is consistent across
+all versions of all metrics.
+
+
+ANALYSIS 4: FULL MODEL WITH ALL CIRCADIAN METRICS
+---------------------------------------------------
+
+All four PRE circadian metrics were entered simultaneously:
+  behaviour ~ IS_pre + IV_pre + RA_pre + Amplitude_pre + Age + Sex
+
+Results:
+
+  Barnes accuracy: R² = 0.241, but no individual circadian predictor
+    was significant (all p > 0.13). The overall model was significant
+    (F p = 0.006), but this was driven by the Age and Sex terms, not
+    the circadian metrics.
+
+  Learning slope: R² = 0.017, model not significant (p = 0.963).
+    Circadian metrics collectively explained essentially zero variance
+    in learning rate.
+
+  NOR DI: R² = 0.224, model significant (F p = 0.006), but again
+    driven by Age and Sex. No circadian predictor was significant
+    (all p > 0.29).
+
+Interpretation: Even when all circadian metrics are considered jointly,
+they add no predictive value beyond Age and Sex. The models that
+achieve significance do so because of the demographic covariates,
+not the circadian predictors.
+
+
+OVERALL CONCLUSION
+------------------
+
+Across 36 single-predictor tests, 54 interaction tests, and 3 full
+models, no circadian metric — whether measured at baseline (PRE),
+after treatment (POST), or as change (delta) — significantly predicted
+spatial learning (Barnes maze) or recognition memory (NOR) after
+correction for multiple comparisons.
+
+This null result is consistent across:
+  - All four circadian metrics (IS, IV, RA, Amplitude)
+  - All three measurement timepoints (PRE, POST, delta)
+  - All three behavioural outcomes (accuracy, learning slope, NOR DI)
+  - Both single-predictor and interaction models
+
+The behavioural variance in this sample is driven primarily by Age
+(and to a lesser extent, Sex), not by circadian rhythm parameters.
+
+For the paper, this supports the conclusion that:
+  1. 40 Hz light did not alter circadian rhythms (from the LME analysis)
+  2. Circadian rhythms do not predict cognitive outcomes in this sample
+  3. There is no evidence for a circadian-mediated pathway from
+     40 Hz light to cognition
