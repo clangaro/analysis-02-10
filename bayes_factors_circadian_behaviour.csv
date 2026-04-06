@@ -1,0 +1,13 @@
+outcome,predictor,t,p,BF01,interpretation
+Barnes T6 probe accuracy,IS_pre,0.3857618659537087,0.7006843471454799,8.608650239266142,moderate evidence for null
+Barnes T6 probe accuracy,IV_pre,0.9406639715015169,0.34967397537661715,5.958086035303944,moderate evidence for null
+Barnes T6 probe accuracy,RA_pre,-0.42111242032992796,0.6747883130386163,8.486747361565877,moderate evidence for null
+Barnes T6 probe accuracy,Amplitude_pre,-1.0498351840892766,0.29691612844065274,5.344653370746429,moderate evidence for null
+Barnes learning slope (T1-5),IS_pre,0.21080487341587378,0.833556225951046,9.174694165376975,moderate evidence for null
+Barnes learning slope (T1-5),IV_pre,-0.327185671954375,0.7443512102675922,8.891921565534776,moderate evidence for null
+Barnes learning slope (T1-5),RA_pre,0.506182194481808,0.6140706358368642,8.252846740104534,moderate evidence for null
+Barnes learning slope (T1-5),Amplitude_pre,0.38238677008089816,0.7031519098189759,8.719471133665854,moderate evidence for null
+NOR Discrimination Index,IS_pre,-0.9162862466425885,0.3625756630216207,5.729202992513257,moderate evidence for null
+NOR Discrimination Index,IV_pre,0.11909436640693329,0.9055322595705082,8.65619228638213,moderate evidence for null
+NOR Discrimination Index,RA_pre,-0.5147725353401237,0.6082886864206624,7.635980014395245,moderate evidence for null
+NOR Discrimination Index,Amplitude_pre,-1.3127945919448,0.19342127074427046,3.682720884700527,moderate evidence for null
