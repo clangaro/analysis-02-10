@@ -346,6 +346,49 @@ with tabs[3]:
     corr_method = st.radio("Heatmap method", ["pearson", "spearman"], horizontal=True, key="corr_h")
     st.plotly_chart(P.correlation_heatmap(filtered, corr_cols, method=corr_method), use_container_width=True)
 
+    with st.expander("🔬 Compare subgroups side-by-side", expanded=False):
+        st.caption(
+            "Configure 2–4 panels with independent sex / age / light filters "
+            "to compare correlation structure across groups. Uses the full "
+            "master sample (sidebar filters ignored) and the heatmap method selected above."
+        )
+        n_panels = st.slider("Number of panels", 2, 4, 2, key="corr_n_panels")
+        panel_cols = st.columns(n_panels)
+        panel_configs = []
+        for i, col in enumerate(panel_cols):
+            with col:
+                st.markdown(f"**Panel {i + 1}**")
+                p_sex = st.multiselect(
+                    "Sex", ["Male", "Female"],
+                    default=["Female"] if i == 0 else ["Male"],
+                    key=f"corr_cmp_sex_{i}",
+                )
+                p_age = st.multiselect(
+                    "Age", ["Young", "Mid", "Old"],
+                    default=["Old"],
+                    key=f"corr_cmp_age_{i}",
+                )
+                p_light = st.multiselect(
+                    "Light", ["CTR", "ISF"],
+                    default=["CTR", "ISF"],
+                    key=f"corr_cmp_light_{i}",
+                )
+                panel_configs.append((p_sex, p_age, p_light))
+
+        plot_cols = st.columns(n_panels)
+        for i, (p_sex, p_age, p_light) in enumerate(panel_configs):
+            with plot_cols[i]:
+                sub = D.apply_filters(master, sexes=p_sex, ages=p_age, lights=p_light)
+                n_mice = sub["ID"].nunique() if "ID" in sub.columns else len(sub)
+                label = f"{'/'.join(p_sex) or '—'} · {'/'.join(p_age) or '—'} · {'/'.join(p_light) or '—'}"
+                st.caption(f"**{label}** (n = {n_mice})")
+                if n_mice < 3:
+                    st.info("Not enough mice for a correlation matrix (need ≥ 3).")
+                else:
+                    fig = P.correlation_heatmap(sub, corr_cols, method=corr_method)
+                    fig.update_layout(title=None, height=380, margin=dict(l=40, r=20, t=20, b=40))
+                    st.plotly_chart(fig, use_container_width=True)
+
 
 # -----------------------------------------------------------
 # 5. Effect sizes & power
