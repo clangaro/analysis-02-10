@@ -1,0 +1,101 @@
+PROJECT GUIDE — analysis_02_10
+Repository: https://github.com/clangaro/analysis-02-10
+Hosted app:  Streamlit Community Cloud (auto-deploys from main branch)
+
+================================================================
+STREAMLIT APP (the public-facing interactive dashboard)
+================================================================
+
+app.py                  Main entry point. Run with: streamlit run app.py
+                        Contains all tabs: Hypothesis, Methods, Sleep bursts,
+                        Phase x cognition (incl. correlation matrices with
+                        side-by-side subgroup comparison), Effect sizes & power,
+                        Diagnostics, Interpretation & implications.
+
+app_data.py             Data loading & merging (cached). Loads CSVs, builds
+                        the master table, and provides apply_filters() for
+                        subsetting by sex, age, light condition, phase window.
+
+app_plots.py            Plotly visualisation helpers — correlation heatmaps,
+                        scatter plots, and other figures used by app.py.
+
+app_stats.py            Statistics module — bootstrap CIs, Bayes factors,
+                        effect sizes, FDR correction, power analysis.
+
+requirements.txt        Python dependencies for Streamlit Cloud deployment.
+
+================================================================
+STANDALONE ANALYSIS SCRIPTS
+================================================================
+
+analysis.py                     Main analysis pipeline (non-Streamlit).
+analysis_overdispersion.py      Overdispersion checks for count outcomes.
+barnes_pca.py                   PCA on Barnes maze variables.
+circadian_behaviour_advanced.py Advanced circadian-behaviour modelling.
+circadian_predicts_behaviour.py Tests whether circadian metrics predict behaviour.
+correlation_matrix_analysis.py  Standalone correlation matrix computation.
+exclusion_analysis.py           Sensitivity analysis for sample exclusions.
+improved_barnes_analysis.py     Refined Barnes maze statistical analysis.
+metrics_script.py               Reads raw PIR data, regularises, computes NPCRA
+                                + cosinor circadian metrics.
+normalised_pipeline.py          Normalisation pipeline and comparison.
+sex_age_effects.py              Sex and age interaction effects on outcomes.
+variability_analysis.py         Individual variability and residual SD analysis.
+
+================================================================
+JUPYTER NOTEBOOKS
+================================================================
+
+graphs.ipynb                    General exploratory graphs.
+improved_barnes_figures.ipynb   Figures for the improved Barnes analysis.
+metrics_script.ipynb            Notebook version of metrics_script.py (empty).
+sensitivity_figures.ipynb       Figures for sensitivity/exclusion analysis.
+sex_age_figures.ipynb           Figures for sex/age interaction effects.
+variability_figures.ipynb       Figures for variability analysis.
+
+================================================================
+DATA FILES (CSVs)
+================================================================
+
+Barnes_clean.csv                        Cleaned Barnes maze trial data.
+Circadian_raw.csv                       Raw circadian rhythm metrics.
+UCBAge_Familiar_clean.csv               NOR familiar-object data.
+UCBAge_Novel_clean.csv                  NOR novel-object data.
+circadian_computed_normalised.csv       Normalised circadian metrics (post-pipeline).
+circadian_computed_raw.csv              Raw computed circadian metrics.
+learning_slopes_per_mouse.csv           Per-mouse learning slope estimates.
+effect_sizes_and_power.csv              Pre-computed effect sizes and power.
+bayes_factors_circadian_behaviour.csv   Bayes factors for circadian-behaviour tests.
+circadian_behaviour_interactions.csv    Interaction model results.
+circadian_behaviour_single.csv          Single-predictor model results.
+circadian_clusters.csv                  Circadian cluster assignments.
+exclusion_analysis_results.csv          Results from exclusion sensitivity checks.
+exclusion_analysis_comparison.csv       Comparison table for exclusion analysis.
+normalised_pipeline_results.csv         Normalisation pipeline output.
+normalised_pipeline_comparison.csv      Comparison of normalisation approaches.
+sex_age_barnes_results.csv              Sex/age Barnes maze results.
+sex_age_nor_results.csv                 Sex/age NOR results.
+variability_bootstrap_ratios.csv        Bootstrap ratio estimates for variability.
+variability_residual_sd.csv             Residual SD estimates.
+
+================================================================
+TEXT / DOCUMENTATION FILES
+================================================================
+
+circadian_behaviour_explanation.txt     Explanation of circadian-behaviour analysis.
+improved_barnes_explanation.txt         Explanation of improved Barnes analysis.
+sensitivity_analysis_writeup.txt        Writeup for the sensitivity analysis.
+poster_methods.txt                      Methods section for poster presentation.
+
+================================================================
+DIRECTORIES
+================================================================
+
+figures/            Generated PNG figures (36 files).
+data/               Placeholder subdirs: data/raw/, data/processed/ (empty).
+src/                Placeholder subdirs: src/analysis/, src/preprocessing/,
+                    src/sensitivity/ (empty).
+results/            Placeholder subdirs: results/figures/, results/tables/ (empty).
+notebooks/          Empty placeholder.
+reports/            Empty placeholder.
+Raw IR Monitor Data/  Raw infrared monitor data files (input to metrics_script.py).
