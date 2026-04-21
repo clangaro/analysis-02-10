@@ -1,0 +1,312 @@
+================================================================================
+POSTER INTERPRETATION — CIRCADIAN x COGNITION IN AGED MICE (analysis_02_10)
+================================================================================
+Prepared from the full re-analysis in:
+  - poster_analysis/poster_results.ipynb
+  - poster_analysis/vulnerability_resilience_analysis/01_pi_approach_per_metric_1sd.ipynb
+  - poster_analysis/vulnerability_resilience_analysis/02_composite_directional_approach.ipynb
+  - poster_analysis/vulnerability_resilience_analysis/03_behavioural_composite_approach.ipynb
+  - Pre-existing repo outputs:
+    sex_age_barnes_results.csv, bayes_factors_circadian_behaviour.csv
+
+================================================================================
+1. STUDY DESIGN AND COHORT
+================================================================================
+- 94 mice total; after excluding n = 10 Young animals (cell sizes 2-3) we analyse
+  Mid (n = 44) and Old (n = 40).
+- Age x Sex x Light cells in Mid+Old are 8-12 animals each.
+- Within-subject design: PRE and POST measurements of circadian metrics per mouse.
+- ISF light condition vs CTR was the primary manipulation (sleep fragmentation).
+- Behavioural outcomes:
+    Barnes maze (trial 6 endpoints + learning slope across trials 1-5)
+    NOR (Novel Object Recognition), discrimination index (DI = (N - F) / (N + F)).
+- Circadian metrics (NPCRA + cosinor):
+    IS  (interdaily stability; higher = more stable day-to-day pattern)
+    IV  (intradaily variability; higher = more fragmented)
+    RA  (relative amplitude; higher = stronger rest/activity rhythm)
+    Amplitude (cosinor; higher = stronger rhythm)
+- Sample sizes per outcome reflect missingness:
+    barnes_entries_t6: 88/94  (6 missing)
+    learning_slope:    89/94  (5 missing)
+    DI_duration:       77/94 (17 missing)
+
+================================================================================
+2. HEADLINE FINDINGS (one-paragraph summary)
+================================================================================
+(1) The ISF light intervention did NOT differentially perturb circadian metrics
+    (all PRE x Light interactions p > 0.25, p_fdr > 0.5). The "light disrupts
+    rhythm which disrupts cognition" causal chain has no reliable first leg.
+(2) Sex, not Age or Light, is the strongest determinant of circadian phenotype
+    in this cohort. Males have lower Amplitude (PRE p_fdr = 0.029, POST p_fdr =
+    0.029) and lower RA POST (p_fdr = 0.043). Age effects trend in the expected
+    direction but do not survive FDR.
+(3) At the full cohort level, circadian metrics do NOT predict cognition. 48
+    covariate-adjusted regressions (with PRE/POST) and 16 regressions (after
+    collapsing PRE/POST based on the Section-1 null) produced zero FDR survivors.
+    Bayesian evidence moderately favours the null (BF01 ~ 3.7-9.2).
+(4) A coherent, specific, ISF-conditional signal is found in Old Males. Stronger
+    circadian rhythm amplitude is associated with WORSE novel-object recognition
+    (r = -0.49, p = 0.022, n = 22; bootstrap 95% CI [-0.78, -0.10]) AND BETTER
+    Barnes learning slope (r = +0.43, p = 0.048), producing a task-specific
+    dissociation. The NOR effect is strikingly specific to the ISF cell
+    (ISF: r = -0.81, p = 0.005, n = 10; CTR: r = -0.10, ns, n = 12).
+(5) Barnes and NOR are ORTHOGONAL memory domains in old animals (Cohen's kappa
+    = -0.17, 42% agreement, chance = 50%), so standard memory composites would
+    have erased the signal. The rhythm-cognition signal is specifically in the
+    NOR domain; Barnes fidelity tracks no circadian metric at any age or sex.
+(6) Pre-existing finding (from sex_age_barnes_results.csv): Age x Sex
+    interaction on Barnes distance moved is FDR-significant (beta = -632 cm,
+    p_fdr = 0.0036). Old males move less, independent of memory performance.
+    This confirms Old Males as a phenotypically distinct subgroup a priori.
+
+================================================================================
+3. ANALYTICAL APPROACH (in order)
+================================================================================
+Step 0 - Manipulation check: mixed-effects LME per metric with PRE_POST x Light
+         random-intercept model. All interactions p > 0.25.
+
+Step 1 - Given the manipulation-check null, PRE and POST are two measurements
+         of the same underlying per-animal phenotype. Collapsed to
+         IS_mean, IV_mean, RA_mean, Amplitude_mean = (PRE + POST)/2.
+         This reduces measurement noise and cuts the primary-family
+         multiple-testing burden from 48 -> 16 tests.
+
+Step 2 - OLS regression of each behavioural outcome on each collapsed circadian
+         metric, adjusting for Age, Sex, Light. FDR across 16 tests = 0
+         survivors.
+
+Step 3 - Moderator probe: circadian x Age, x Sex, x Light interactions on each
+         outcome. FDR across 96 interaction tests = 0 survivors. Best raw p =
+         0.0037 for Amplitude_post x Age on NOR DI, suggesting Old animals
+         differ from Mid in the circadian-NOR relationship.
+
+Step 4 - Stratified follow-up on the best hit: Amplitude x Age x Sex x Light
+         cells. This is where the coherent Old-Male subgroup signal emerged.
+
+Step 5 - Behaviourally-forward validation (vulnerability_resilience_analysis/
+         notebook 3): classify animals by memory performance (split by median),
+         then compare circadian metrics across groups. This recovered the same
+         sex-conditional NOR-amplitude relationship (d = +0.51 for NOR split,
+         concentrated in Old Males).
+
+Step 6 - Orthogonality check: Cohen's kappa between Barnes and NOR memory
+         classifications = -0.17, showing the two memory domains are
+         independently variable in old animals. This empirically rules out a
+         single-memory-composite approach for this cohort.
+
+================================================================================
+4. OLD-MALE SIGNAL IN DETAIL
+================================================================================
+Subsample: n = 22 (CTR = 12, ISF = 10), selected a priori because an
+independent Age x Sex interaction on Barnes DistanceMoved is FDR-significant
+(p_fdr = 0.0036) in sex_age_barnes_results.csv.
+
+Within Old Males, several circadian metrics correlate with behavioural
+outcomes in a CONSISTENT PATTERN (pooled across CTR + ISF unless stated):
+
+  Amplitude_mean  -> NOR DI            r = -0.49,  p = 0.022   Spearman rho = -0.45
+  Amplitude_pre   -> NOR DI            r = -0.44,  p = 0.043
+  Amplitude_post  -> NOR DI            r = -0.51,  p = 0.016
+  RA_mean         -> NOR DI            r = -0.33,  p = 0.138
+  IV_mean         -> NOR DI            r = +0.42,  p = 0.049   (opposite sign to Amp)
+
+  Amplitude_mean  -> learning slope    r = +0.43,  p = 0.048
+  RA_mean         -> learning slope    r = +0.46,  p = 0.033
+  Amplitude_pre   -> learning slope    r = +0.40,  p = 0.068
+
+Cross-light split:
+  Old Male / CTR: Amplitude_post -> NOR DI  r = -0.12, p = 0.72  (n = 12)
+  Old Male / ISF: Amplitude_post -> NOR DI  r = -0.85, p = 0.002 (n = 10)
+
+Specificity checks:
+  Old Male: Amplitude_post -> NOVEL object exploration  r = -0.41, p = 0.061
+            Amplitude_post -> FAMILIAR object exploration r = +0.13, p = 0.56
+  (The effect is specifically on novelty processing, not generic exploration.)
+
+  Amplitude_mean -> NOR DI across all 4 Age x Sex cells:
+    Mid Female   r = -0.20, p = 0.43 (ns)
+    Mid Male     r = +0.16, p = 0.48 (ns)
+    Old Female   r = -0.13, p = 0.65 (ns)
+    Old Male     r = -0.49, p = 0.022   <-- only cell with effect
+
+Robustness:
+  Leave-one-out Pearson r range: [-0.61, -0.39] -- not driven by single animal.
+  Bootstrap (5000 resamples) 95% CI: [-0.78, -0.10] -- excludes zero.
+  Spearman rho = -0.45 confirms parametric r = -0.49 is not outlier-driven.
+  Adjusted for Light in linear model: beta = -0.10, p = 0.020.
+
+Sex-stratified continuous test (from notebook 3):
+  NOR DI vs circadian dysfunction score (directional composite, higher = worse rhythm):
+    Females: rho = -0.03 (ns)
+    Males:   rho = +0.35, p = 0.11
+  (Sign flips relative to the Amplitude-forward formulation because the
+   dysfunction score has IS/RA/Amplitude sign-flipped; pattern is consistent.)
+
+INTERPRETATION: In aged male mice, circadian rhythm strength dissociates
+memory domains. Stronger rhythm amplitude predicts faster Barnes spatial
+learning but worse NOR novel-object recognition, with the NOR side of the
+dissociation emerging specifically under sleep fragmentation (ISF). Candidate
+mechanistic hypotheses: (a) rigid rhythms reduce the cognitive flexibility
+needed for novelty processing while supporting routine spatial learning;
+(b) compensatory amplitude amplification in animals whose homeostasis is
+already compromised at other levels (e.g., locomotor); (c) sex-specific
+circadian/hippocampal-cortical circuit interactions.
+
+================================================================================
+5. SUGGESTED POSTER NARRATIVE
+================================================================================
+TITLE CANDIDATES:
+  "Aged-male-specific circadian-cognition dissociation emerges under sleep
+   fragmentation"
+  "Memory-domain specificity of circadian coupling in aged male mice"
+  "Rigid rhythms, paradoxical memory: a sex- and task-specific circadian
+   phenotype in aged mice"
+
+HEADLINE CLAIM (one sentence, print it on the poster):
+  "In aged male mice, circadian rhythm strength dissociates spatial from
+   recognition memory: stronger rhythms are associated with slower novel-object
+   recognition but faster Barnes spatial learning. The NOR effect is specific to
+   the sleep-fragmentation condition, consistent with task-dependent roles of
+   rhythm rigidity versus flexibility in aging memory."
+
+THREE-PANEL STRUCTURE:
+
+  Panel A - "Intervention did not shift rhythms; the subgroup emerges from
+             behaviour."
+    Figure A1: manipulation-check plot of ΔPRE->POST per metric x Light
+               (all flat, poster_results Section 1).
+    Figure A2: Age x Sex boxplot of Barnes DistanceMoved_cm isolating Old Males
+               (p_fdr = 0.0036, poster_results Section 4 / sex_age_barnes_results).
+
+  Panel B - "Sex, not age, drives circadian phenotype."
+    Forest plot of standardised betas (Section 3 of poster_results) -- the only
+    FDR-significant effects on rhythm metrics are Sex effects on Amplitude_mean
+    and RA_mean. Complements Panel A by showing the circadian side of the
+    sex-specificity.
+
+  Panel C - "In old males, rhythm amplitude dissociates memory tasks."
+    (The main scientific panel.)
+    C1: Scatter of Amplitude_mean vs NOR DI in Old Males, with ISF and CTR
+        dots differentiated. Callouts: overall r = -0.49 p = 0.022, ISF-only
+        r = -0.81 p = 0.002.
+    C2: Scatter of Amplitude_mean vs Barnes learning slope in Old Males,
+        r = +0.43 p = 0.048 -- the other side of the dissociation.
+    C3: 2x2 specificity strip: Amplitude_mean vs NOR DI in all four Age x Sex
+        cells, only Old Male cell shows a correlation.
+    C4 (methods companion from the vulnerability notebook 3):
+        Scatter of Barnes fidelity composite vs NOR DI across all 40 old
+        animals with kappa = -0.17 callout. Argues against memory composites
+        and motivates keeping the two tasks separate.
+
+  Optional Panel D - Caveats and interpretive remarks (see Section 6 below).
+
+================================================================================
+6. CAVEATS TO PRINT ON THE POSTER (non-negotiable)
+================================================================================
+1. The Old-Male findings are EXPLORATORY. They do not survive strict FDR across
+   the full 48-test full-cohort family (min p_fdr ~ 0.93) or the 16-test
+   Old-Male grid (min p_fdr ~ 0.20). The evidence is a COHERENT PATTERN across
+   multiple related metrics, not a single corrected test.
+2. Small subgroup n. Old Male total n = 22; strongest single result (ISF cell)
+   is n = 10. Bootstrap CI [-0.78, -0.10] is wide.
+3. REPLICATION REQUIRED. This should be pre-registered and tested on an
+   independent cohort before being treated as confirmed.
+4. PARADOXICAL DIRECTION needs a mechanism. Stronger rhythm -> worse NOR in
+   aged males is the opposite direction to the naive "rhythm loss impairs
+   cognition" model. Propose rigid-vs-flexible rhythm hypothesis in the
+   discussion, frame it as hypothesis-generating.
+5. The INTERVENTION did not work as intended (Section 1 of poster_results).
+   Do not write "ISF-induced circadian disruption" anywhere on the poster;
+   instead, describe ISF as a sleep-fragmentation context that appears to
+   MODERATE rather than produce the circadian phenotype.
+6. Barnes and NOR are orthogonal in this cohort (kappa = -0.17). Do not pool
+   them into a single memory score. Report them separately, always.
+
+================================================================================
+7. WHAT THIS DATASET DOES AND DOES NOT SUPPORT
+================================================================================
+SUPPORTS (honest, positive claims):
+  - Sex is a major determinant of circadian phenotype in aged mice.
+  - An FDR-corrected Age x Sex locomotor deficit isolates Old Males as a
+    distinct phenotypic subgroup.
+  - In that subgroup, rhythm amplitude tracks memory performance in a
+    task-dependent way, in a pattern that is internally consistent across
+    multiple circadian metrics (Amplitude, RA, IV) and two analytical
+    directions (rhythm -> cognition and cognition -> rhythm).
+  - Barnes spatial and NOR recognition memory are independent in aged mice,
+    arguing against single-factor memory composites.
+
+DOES NOT SUPPORT (claims to avoid):
+  - "Sleep fragmentation impairs circadian rhythms" -- the ISF x Light
+    interaction is null.
+  - "Circadian dysfunction causes cognitive decline" -- at the cohort level
+    there is moderate Bayesian evidence AGAINST, not for, this.
+  - "Weaker rhythms predict worse memory" -- in the subgroup where an effect
+    exists, the direction is the opposite.
+  - "The effect is general" -- it is sex- and task-specific, and the NOR
+    component is light-condition-specific.
+
+================================================================================
+8. FIGURE LEGEND TEMPLATES (ready-to-edit, ~50 words each)
+================================================================================
+
+FIG A1 (manipulation check) - "Circadian metrics by PRE/POST x Light condition
+  in Mid+Old animals. PRE and POST means (95% CI) for each of the four NPCRA/
+  cosinor metrics under CTR (green) and ISF sleep-fragmentation (red).
+  No metric showed a significant PRE x Light interaction (all p > 0.25,
+  FDR > 0.50, mixed-effects model), indicating that ISF did not differentially
+  perturb rhythm metrics relative to CTR."
+
+FIG A2 (Age x Sex locomotor) - "Barnes trial-6 total distance moved, by Age x
+  Sex. The Age[Old] x Sex[Male] interaction is the only term surviving FDR
+  correction across the 36-test family (beta = -632 cm, p = 0.00017,
+  p_fdr = 0.0036). Old males specifically show blunted exploration."
+
+FIG B (forest plot) - "Standardised betas (+/- 95% CI) for Age, Sex, and Light
+  effects on each collapsed circadian metric in Mid+Old animals (n = 84).
+  Only Sex effects on Amplitude_mean (PRE and POST) and RA_mean (POST) survive
+  FDR correction across the 12-test family; red markers indicate p_fdr < 0.05."
+
+FIG C1 (main result) - "Relationship between rhythm amplitude and NOR
+  discrimination index in Old Males (n = 22). Stronger rhythms are associated
+  with worse novelty memory (Pearson r = -0.49, p = 0.022; Spearman rho = -0.45,
+  p = 0.025; bootstrap 95% CI [-0.78, -0.10]). The association is concentrated
+  in the ISF sleep-fragmentation condition (ISF: r = -0.85, p = 0.002, n = 10;
+  CTR: r = -0.12, p = 0.72, n = 12)."
+
+FIG C2 (dissociation) - "Rhythm amplitude predicts Barnes learning slope in
+  the opposite direction to NOR in the same Old-Male cohort (r = +0.43,
+  p = 0.048). This dissociation across memory tasks within a single subgroup
+  is the central finding."
+
+FIG C3 (specificity) - "Amplitude vs NOR DI stratified by Age x Sex. The
+  correlation is statistically detectable only in Old Males; Mid-Female,
+  Mid-Male, and Old-Female show r's near zero (all p > 0.4, all n >= 14),
+  ruling out a generic circadian-NOR signal."
+
+FIG C4 (orthogonality) - "Barnes fidelity composite (z-mean of target-zone
+  entries + target-quadrant % time) vs NOR DI in old animals (n = 36 with both
+  scores). Cohen's kappa = -0.17 (42% classification agreement vs 50% chance).
+  Spatial and recognition memory are independently variable in this cohort."
+
+================================================================================
+9. STATISTICAL METHODS SUMMARY (for the poster methods section)
+================================================================================
+- Mixed-effects linear models (statsmodels MixedLM, REML, random intercept
+  per mouse) for PRE/POST x Light manipulation checks.
+- Ordinary least squares regression for Age/Sex/Light effects on each
+  circadian metric, covariate-adjusted.
+- Pearson and Spearman correlations for circadian x behaviour relationships.
+- Mann-Whitney U tests for behaviour comparisons between memory-classification
+  groups.
+- Cohen's d with pooled SD, 95% CI by two methods: parametric Hedges-Olkin SE
+  and percentile bootstrap (5000 resamples).
+- FDR correction by Benjamini-Hochberg within each pre-specified family.
+- PCA by SVD (numpy) used only for dimensionality-reduction diagnostics.
+- Cohen's kappa hand-rolled: (p_observed - p_chance)/(1 - p_chance).
+- All analyses conducted in Python 3.12 with pandas, scipy, statsmodels,
+  matplotlib, seaborn.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

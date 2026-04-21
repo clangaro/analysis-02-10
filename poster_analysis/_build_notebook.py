@@ -50,11 +50,12 @@ wide = wide.merge(grp, on="ID", how="left")
 # --- Barnes T6 + slope ---
 barnes = pd.read_csv(REPO / "Barnes_clean.csv")
 t6 = barnes[barnes["Trial"] == 6][
-    ["ID", "EntryZone_freq_new", "Hole_errors", "DistanceMoved_cm", "Q1"]
+    ["ID", "EntryZone_freq_new", "Hole_errors", "DistanceMoved_cm", "Q4"]
 ].rename(columns={"EntryZone_freq_new": "barnes_entries_t6",
                   "Hole_errors": "barnes_errors_t6",
                   "DistanceMoved_cm": "barnes_distance_t6",
-                  "Q1": "barnes_Q1_pct"})
+                  "Q4": "barnes_Q4_pct"})
+# Q4 = target (goal) quadrant; Q1 = opposite quadrant (per sex_age_effects.py).
 slopes = pd.read_csv(REPO / "learning_slopes_per_mouse.csv")[["ID", "learning_slope"]]
 
 # --- NOR ---
@@ -274,7 +275,7 @@ cells += [md("""\
 cells += [code("""\
 OUTCOMES = [("barnes_entries_t6", "Barnes T6 entries"),
             ("learning_slope", "Barnes learning slope"),
-            ("barnes_Q1_pct", "Barnes Q1 % time"),
+            ("barnes_Q4_pct", "Barnes target-quadrant % time"),
             ("DI_duration", "NOR DI")]
 PREDS = [f"{m_}_mean" for m_ in METRICS]
 
