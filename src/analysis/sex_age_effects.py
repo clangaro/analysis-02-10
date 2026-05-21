@@ -48,8 +48,16 @@ def cohens_d(g1, g2):
 # Load data
 # ============================================================
 
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))
 if "Animal_ID" in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
 
@@ -435,7 +443,7 @@ RECOMMENDATION:
 """)
 
 # Save
-slope_df.to_csv("learning_slopes_per_mouse.csv", index=False)
-br_df.to_csv("sex_age_barnes_results.csv", index=False)
-nr_df.to_csv("sex_age_nor_results.csv", index=False)
+slope_df.to_csv(DATA_PROCESSED / "learning_slopes_per_mouse.csv", index=False)
+br_df.to_csv(RESULTS_TABLES / "sex_age_barnes_results.csv", index=False)
+nr_df.to_csv(RESULTS_TABLES / "sex_age_nor_results.csv", index=False)
 print("Saved: learning_slopes_per_mouse.csv, sex_age_barnes_results.csv, sex_age_nor_results.csv")

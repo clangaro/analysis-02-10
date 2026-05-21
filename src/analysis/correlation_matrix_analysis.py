@@ -38,8 +38,16 @@ def clean_colnames(df):
 # =========================
 # Load data
 # =========================
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
+
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
 
 # Ensure ID numeric
 for df in (circ, barnes):

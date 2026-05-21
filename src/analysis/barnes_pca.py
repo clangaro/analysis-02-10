@@ -56,9 +56,17 @@ def require_cols(df: pd.DataFrame, cols: list[str], name: str):
 # =========================
 # Load + clean
 # =========================
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))  # not used, but loaded for consistency
+
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))  # not used, but loaded for consistency
 
 if "Animal_ID" in nor.columns and "ID" not in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})

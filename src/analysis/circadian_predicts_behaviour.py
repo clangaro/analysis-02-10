@@ -44,9 +44,17 @@ def clean_colnames(df):
 # Load and prepare data
 # ============================================================
 
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))
 if "Animal_ID" in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
 
@@ -374,6 +382,6 @@ print("\n" + "=" * 70)
 print("SUMMARY")
 print("=" * 70)
 
-sr_df.to_csv("circadian_behaviour_single.csv", index=False)
-ir_df.to_csv("circadian_behaviour_interactions.csv", index=False)
+sr_df.to_csv(RESULTS_TABLES / "circadian_behaviour_single.csv", index=False)
+ir_df.to_csv(RESULTS_TABLES / "circadian_behaviour_interactions.csv", index=False)
 print("\nSaved: circadian_behaviour_single.csv, circadian_behaviour_interactions.csv")

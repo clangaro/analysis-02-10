@@ -49,9 +49,17 @@ def logit_clip(x, eps=1e-6):
 # Load data
 # ============================================================
 
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))
 
 if "Animal_ID" in nor.columns and "ID" not in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
@@ -78,7 +86,7 @@ nor["Sex_new"] = nor["Sex_new"].astype("category")
 # Identify flagged mice from computed sensor analysis
 # ============================================================
 
-sensor_df = pd.read_csv("circadian_computed_raw.csv")
+sensor_df = pd.read_csv(DATA_PROCESSED / "circadian_computed_raw.csv")
 # A mouse is flagged if ANY of its periods (PRE or POST) is flagged
 flagged_ids = set(sensor_df[sensor_df["sensor_flag"] == True]["ID"].unique())
 all_ids = set(circ["ID"].dropna().unique())
@@ -437,6 +445,6 @@ else:
     print("The sensor issues do NOT drive the primary findings.")
 
 # Save
-res_df.to_csv("exclusion_analysis_results.csv", index=False)
-comparison.to_csv("exclusion_analysis_comparison.csv")
+res_df.to_csv(RESULTS_TABLES / "exclusion_analysis_results.csv", index=False)
+comparison.to_csv(RESULTS_TABLES / "exclusion_analysis_comparison.csv")
 print("\nSaved: exclusion_analysis_results.csv, exclusion_analysis_comparison.csv")

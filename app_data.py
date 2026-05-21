@@ -17,6 +17,9 @@ import pandas as pd
 import streamlit as st
 
 REPO = Path(__file__).resolve().parent
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
 IR_DIR = REPO / "Raw IR Monitor Data"
 
 
@@ -26,24 +29,24 @@ IR_DIR = REPO / "Raw IR Monitor Data"
 
 @st.cache_data(show_spinner=False)
 def load_circadian() -> pd.DataFrame:
-    df = pd.read_csv(REPO / "Circadian_raw.csv")
+    df = pd.read_csv(DATA_RAW / "Circadian_raw.csv")
     df = df.rename(columns={"PRE.POST": "PRE_POST"})
     return df
 
 
 @st.cache_data(show_spinner=False)
 def load_circadian_computed() -> pd.DataFrame:
-    return pd.read_csv(REPO / "circadian_computed_raw.csv")
+    return pd.read_csv(DATA_PROCESSED / "circadian_computed_raw.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_barnes() -> pd.DataFrame:
-    return pd.read_csv(REPO / "Barnes_clean.csv")
+    return pd.read_csv(DATA_RAW / "Barnes_clean.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_nor() -> pd.DataFrame:
-    df = pd.read_csv(REPO / "UCBAge_Novel_clean.csv")
+    df = pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv")
     df = df.rename(columns={"Animal_ID": "ID"})
     # discrimination index
     n = df["N_obj_nose_duration_s"]
@@ -54,32 +57,32 @@ def load_nor() -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def load_learning_slopes() -> pd.DataFrame:
-    return pd.read_csv(REPO / "learning_slopes_per_mouse.csv")
+    return pd.read_csv(DATA_PROCESSED / "learning_slopes_per_mouse.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_effect_sizes() -> pd.DataFrame:
-    return pd.read_csv(REPO / "effect_sizes_and_power.csv")
+    return pd.read_csv(RESULTS_TABLES / "effect_sizes_and_power.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_bayes_factors() -> pd.DataFrame:
-    return pd.read_csv(REPO / "bayes_factors_circadian_behaviour.csv")
+    return pd.read_csv(RESULTS_TABLES / "bayes_factors_circadian_behaviour.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_clusters() -> pd.DataFrame:
-    return pd.read_csv(REPO / "circadian_clusters.csv")
+    return pd.read_csv(DATA_PROCESSED / "circadian_clusters.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_interactions() -> pd.DataFrame:
-    return pd.read_csv(REPO / "circadian_behaviour_interactions.csv")
+    return pd.read_csv(RESULTS_TABLES / "circadian_behaviour_interactions.csv")
 
 
 @st.cache_data(show_spinner=False)
 def load_single_predictors() -> pd.DataFrame:
-    return pd.read_csv(REPO / "circadian_behaviour_single.csv")
+    return pd.read_csv(RESULTS_TABLES / "circadian_behaviour_single.csv")
 
 
 # ----------------------------------------------------------------------

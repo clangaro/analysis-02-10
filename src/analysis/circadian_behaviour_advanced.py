@@ -63,9 +63,17 @@ def bayes_factor_t(t_stat, n, r_scale=0.707):
 # Load and prepare data
 # ============================================================
 
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))
 if "Animal_ID" in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
 
@@ -508,6 +516,6 @@ finding, not a methodological limitation.
 """)
 
 # Save
-bf_df.to_csv("bayes_factors_circadian_behaviour.csv", index=False)
-cluster_data.to_csv("circadian_clusters.csv", index=False)
+bf_df.to_csv(RESULTS_TABLES / "bayes_factors_circadian_behaviour.csv", index=False)
+cluster_data.to_csv(DATA_PROCESSED / "circadian_clusters.csv", index=False)
 print("Saved: bayes_factors_circadian_behaviour.csv, circadian_clusters.csv")

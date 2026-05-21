@@ -50,11 +50,19 @@ def logit_clip(x, eps=1e-6):
 # ============================================================
 
 # Original ClockLab metrics
-circ_orig = clean_colnames(pd.read_csv("Circadian_raw.csv"))
+
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+circ_orig = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
 circ_orig["ID"] = pd.to_numeric(circ_orig["ID"], errors="coerce").astype("Int64")
 
 # Normalised metrics (from metrics_script.py)
-circ_norm = pd.read_csv("circadian_computed_normalised.csv")
+circ_norm = pd.read_csv(DATA_PROCESSED / "circadian_computed_normalised.csv")
 circ_norm = circ_norm[circ_norm["PRE_POST"].isin(["PRE", "POST"])].copy()
 circ_norm["ID"] = pd.to_numeric(circ_norm["ID"], errors="coerce").astype("Int64")
 
@@ -63,8 +71,8 @@ meta = circ_orig[["ID", "Light_new", "Age_new", "Sex_new"]].drop_duplicates("ID"
 circ_norm = circ_norm.merge(meta, on="ID", how="left")
 
 # Barnes and NOR
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))
 if "Animal_ID" in nor.columns and "ID" not in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
 for df in (barnes, nor):
@@ -233,6 +241,6 @@ else:
     print("No conclusions changed. All effects that were non-significant with")
     print("original metrics remain non-significant with normalised metrics.")
 
-res_df.to_csv("normalised_pipeline_results.csv", index=False)
-comparison.to_csv("normalised_pipeline_comparison.csv")
+res_df.to_csv(RESULTS_TABLES / "normalised_pipeline_results.csv", index=False)
+comparison.to_csv(RESULTS_TABLES / "normalised_pipeline_comparison.csv")
 print("\nSaved: normalised_pipeline_results.csv, normalised_pipeline_comparison.csv")

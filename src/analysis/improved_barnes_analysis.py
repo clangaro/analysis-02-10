@@ -79,9 +79,17 @@ def post_hoc_power(n1, n2, d, alpha=0.05):
 # Load data
 # ============================================================
 
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
-barnes = clean_colnames(pd.read_csv("Barnes_clean.csv"))
-nor = clean_colnames(pd.read_csv("UCBAge_Novel_clean.csv"))
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
+barnes = clean_colnames(pd.read_csv(DATA_RAW / "Barnes_clean.csv"))
+nor = clean_colnames(pd.read_csv(DATA_RAW / "UCBAge_Novel_clean.csv"))
 
 if "Animal_ID" in nor.columns and "ID" not in nor.columns:
     nor = nor.rename(columns={"Animal_ID": "ID"})
@@ -383,7 +391,7 @@ else:
     print(f"\nAll outcomes adequately powered (>80%) to detect d=0.5")
 
 # Save
-effect_df.to_csv("effect_sizes_and_power.csv", index=False)
+effect_df.to_csv(RESULTS_TABLES / "effect_sizes_and_power.csv", index=False)
 print("\nSaved: effect_sizes_and_power.csv")
 
 print("\n" + "=" * 70)

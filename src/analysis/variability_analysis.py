@@ -66,7 +66,15 @@ def bootstrap_var_ratio(pre, post, n_boot=5000, seed=42):
 # Load data
 # ============================================================
 
-circ = clean_colnames(pd.read_csv("Circadian_raw.csv"))
+# Repo-relative paths (added during reorganisation)
+from pathlib import Path
+REPO = Path(__file__).resolve().parents[2]
+DATA_RAW = REPO / "data" / "raw"
+DATA_PROCESSED = REPO / "data" / "processed"
+RESULTS_TABLES = REPO / "results" / "tables"
+
+
+circ = clean_colnames(pd.read_csv(DATA_RAW / "Circadian_raw.csv"))
 circ["ID"] = pd.to_numeric(circ["ID"], errors="coerce").astype("Int64")
 circ["PRE_POST"] = circ["PRE_POST"].astype(str)
 circ["Light_new"] = circ["Light_new"].astype(str).str.strip()
@@ -322,6 +330,6 @@ reduction, that would support a treatment-specific variance effect.
 """)
 
 # Save
-lme_var_df.to_csv("variability_residual_sd.csv", index=False)
-boot_df.to_csv("variability_bootstrap_ratios.csv", index=False)
+lme_var_df.to_csv(RESULTS_TABLES / "variability_residual_sd.csv", index=False)
+boot_df.to_csv(RESULTS_TABLES / "variability_bootstrap_ratios.csv", index=False)
 print("Saved: variability_residual_sd.csv, variability_bootstrap_ratios.csv")
